@@ -1,0 +1,19 @@
+# ===== Python 环境与缓存 =====
+.venv/
+__pycache__/
+*.py[cod]
+
+# ===== IDE / 工具工作目录 =====
+.idea/
+.workbuddy/
+
+# ===== 模型权重（大文件不入库；本地文件保留，不会被删除）=====
+*.pt
+
+# ===== 诊断 / 运行临时产物 =====
+cam_test/
+*.log
+video_feed_sample.bin
+benchmark_results.csv
+
+# 注：dataset/（含已采集帧与 data.yaml）需要入库，不忽略

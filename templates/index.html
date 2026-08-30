@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YOLOv8 实时目标检测</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --canvas: #f5f5f7;
+            --card: #ffffff;
+            --hairline: #e0e0e0;
+            --ink: #1d1d1f;
+            --muted: #7a7a7a;
+            --blue: #0066cc;
+            --blue-dark: #2997ff;
+            --green: #34c759;
+            --orange: #ff9500;
+            --red: #ff3b30;
+            --radius-card: 18px;
+            --radius-cell: 11px;
+            --pill: 9999px;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Microsoft YaHei", sans-serif;
+            background: var(--canvas);
+            color: var(--ink);
+            min-height: 100vh;
+            letter-spacing: -0.2px;
+        }
+
+        /* ================= 顶部导航 ================= */
+        .topnav {
+            height: 52px;
+            background: #000000;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 24px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .topnav-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .topnav h1 {
+            font-size: 17px;
+            font-weight: 600;
+            color: #fff;
+            letter-spacing: -0.37px;
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #1d1d1f;
+            border: 1px solid #333336;
+            padding: 6px 14px;
+            border-radius: var(--pill);
+            font-size: 12px;
+            color: #fff;
+        }
+
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--green);
+            animation: pulse 2s infinite;
+        }
+
+        .status-pill.offline .status-dot { background: var(--red); }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* ================= 主布局 ================= */
+        .layout {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 20px;
+            padding: 24px;
+            align-items: start;
+        }
+
+        .left-col {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            min-width: 0;
+        }
+
+        .right-col {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            max-height: calc(100vh - 100px);
+            overflow-y: auto;
+            padding-right: 2px;
+        }
+
+        .right-col::-webkit-scrollbar { width: 4px; }
+        .right-col::-webkit-scrollbar-track { background: transparent; }
+        .right-col::-webkit-scrollbar-thumb { background: #d2d2d7; border-radius: 4px; }
+
+        /* ================= 卡片通用 ================= */
+        .card {
+            background: var(--card);
+            border: 1px solid var(--hairline);
+            border-radius: var(--radius-card);
+            padding: 18px;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+
+        .card-header h2 {
+            font-size: 15px;
+            font-weight: 600;
+            letter-spacing: -0.22px;
+        }
+
+        .card-header .subtitle {
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        /* ================= 视频区 ================= */
+        .video-card { padding: 16px; }
+
+        .video-wrap {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            background: #1d1d1f;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .video-wrap img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+
+        .live-badge {
+            position: absolute;
+            top: 16px; left: 16px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(0, 0, 0, 0.75);
+            padding: 5px 12px;
+            border-radius: var(--pill);
+            font-size: 11px;
+            font-weight: 600;
+            color: #fff;
+            letter-spacing: 0.5px;
+        }
+
+        .live-dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: var(--red);
+            animation: pulse 1s infinite;
+        }
+
+        .video-warning {
+            position: absolute;
+            inset: 0;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            background: rgba(29, 29, 31, 0.92);
+            z-index: 5;
+            padding: 24px;
+            text-align: center;
+        }
+
+        .video-warning .warn-icon { font-size: 36px; }
+
+        .video-warning .warn-text {
+            font-size: 14px;
+            color: #e5e5ea;
+            line-height: 1.8;
+            max-width: 520px;
+        }
+
+        .video-warning .warn-text b { color: var(--orange); font-weight: 600; }
+
+        /* ================= 实时统计行 ================= */
+        .stat-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+
+        .stat-card {
+            background: var(--card);
+            border: 1px solid var(--hairline);
+            border-radius: var(--radius-card);
+            padding: 16px;
+        }
+
+        .stat-card .label {
+            font-size: 12px;
+            color: var(--muted);
+            margin-bottom: 4px;
+        }
+
+        .stat-card .value {
+            font-size: 28px;
+            font-weight: 600;
+            letter-spacing: -0.37px;
+        }
+
+        .stat-card .value.blue { color: var(--blue); }
+
+        /* ================= 性能指标面板 ================= */
+        .metric-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .metric-cell {
+            background: var(--canvas);
+            border-radius: var(--radius-cell);
+            padding: 12px;
+        }
+
+        .metric-cell .m-label {
+            font-size: 11px;
+            color: var(--muted);
+            margin-bottom: 2px;
+        }
+
+        .metric-cell .m-value {
+            font-size: 20px;
+            font-weight: 600;
+            letter-spacing: -0.22px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .metric-cell .m-value.good { color: var(--green); }
+        .metric-cell .m-value.warn { color: var(--orange); }
+        .metric-cell .m-value.bad  { color: var(--red); }
+
+        .trend-box {
+            margin-top: 10px;
+            background: var(--canvas);
+            border-radius: var(--radius-cell);
+            padding: 8px;
+        }
+
+        .trend-box .trend-legend {
+            display: flex;
+            gap: 14px;
+            font-size: 10px;
+            color: var(--muted);
+            padding: 0 4px 4px;
+        }
+
+        .trend-legend .key { display: flex; align-items: center; gap: 5px; }
+        .trend-legend .swatch { width: 14px; height: 2px; border-radius: 1px; }
+        .trend-legend .swatch.infer { background: var(--blue); }
+        .trend-legend .swatch.loop  { background: var(--muted); }
+
+        #trendCanvas { width: 100%; height: 56px; display: block; }
+
+        /* ================= 运行参数面板 ================= */
+        .param-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 7px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .param-row:last-child { border-bottom: none; }
+
+        .param-row .p-key {
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .param-row .p-value {
+            font-size: 13px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+            text-align: right;
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .param-row .p-value.accent { color: var(--blue); }
+
+        /* ================= 检测结果 ================= */
+        .class-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+
+        .class-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--canvas);
+            padding: 4px 12px;
+            border-radius: var(--pill);
+            font-size: 12px;
+            color: var(--ink);
+        }
+
+        .class-tag .count {
+            background: rgba(0, 102, 204, 0.12);
+            padding: 1px 7px;
+            border-radius: var(--pill);
+            font-weight: 600;
+            font-size: 11px;
+            color: var(--blue);
+        }
+
+        .detection-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .detection-item {
+            background: var(--canvas);
+            border-radius: var(--radius-cell);
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .det-color-dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+
+        .det-info { flex: 1; min-width: 0; }
+
+        .det-class {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+
+        .det-class .en {
+            color: var(--muted);
+            font-weight: 400;
+            font-size: 12px;
+        }
+
+        .det-bbox {
+            font-size: 11px;
+            color: var(--muted);
+            font-family: "SF Mono", Consolas, "Courier New", monospace;
+        }
+
+        .det-confidence { text-align: right; flex-shrink: 0; }
+
+        .det-conf-value {
+            font-size: 16px;
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .conf-bar {
+            width: 72px;
+            height: 3px;
+            background: #e0e0e0;
+            border-radius: 2px;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+
+        .conf-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+
+        .conf-high { color: var(--green); }
+        .conf-mid  { color: var(--orange); }
+        .conf-low  { color: var(--red); }
+        .bar-high  { background: var(--green); }
+        .bar-mid   { background: var(--orange); }
+        .bar-low   { background: var(--red); }
+
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 32px 20px;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        .empty-state .icon { font-size: 36px; margin-bottom: 12px; opacity: 0.5; }
+        .empty-state p { font-size: 13px; line-height: 1.6; }
+
+        /* ================= 图像源面板 ================= */
+        .src-input {
+            width: 100%;
+            height: 40px;
+            padding: 0 16px;
+            border-radius: var(--pill);
+            border: 1px solid var(--hairline);
+            background: var(--canvas);
+            color: var(--ink);
+            font-size: 13px;
+            font-family: "SF Mono", Consolas, "Courier New", monospace;
+            outline: none;
+            margin-bottom: 10px;
+        }
+
+        .src-input:focus { border-color: var(--blue); }
+
+        .btn-row { display: flex; gap: 10px; }
+
+        .btn {
+            flex: 1;
+            height: 40px;
+            border-radius: var(--pill);
+            border: none;
+            font-size: 14px;
+            font-family: inherit;
+            cursor: pointer;
+            transition: transform 0.1s ease, opacity 0.15s ease;
+        }
+
+        .btn:active { transform: scale(0.95); }
+
+        .btn-primary { background: var(--blue); color: #fff; }
+        .btn-primary:hover { opacity: 0.9; }
+
+        .btn-ghost {
+            background: var(--card);
+            color: var(--blue);
+            border: 1px solid var(--blue);
+        }
+
+        .btn-ghost:hover { background: rgba(0, 102, 204, 0.06); }
+
+        .orient-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+
+        .orient-label { font-size: 12px; color: var(--muted); margin-right: 2px; }
+
+        .rot-chip {
+            padding: 6px 12px;
+            border-radius: var(--pill);
+            border: none;
+            background: var(--canvas);
+            color: var(--ink);
+            font-size: 12px;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.15s ease;
+        }
+
+        .rot-chip:hover { background: #e8e8ed; }
+
+        .rot-chip.active {
+            background: var(--blue);
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .src-hint {
+            margin-top: 10px;
+            font-size: 11px;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        /* ================= 响应式 ================= */
+        @media (max-width: 900px) {
+            .layout { grid-template-columns: 1fr; }
+            .right-col { max-height: none; overflow: visible; }
+            .stat-row { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+
+<!-- 顶部导航 -->
+<nav class="topnav">
+    <div class="topnav-left">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+            <path d="M2 12C3.5 7.5 7.5 4.5 12 4.5C16.5 4.5 20.5 7.5 22 12C20.5 16.5 16.5 19.5 12 19.5C7.5 19.5 3.5 16.5 2 12Z" stroke="#2997ff" stroke-width="1.8"/>
+            <circle cx="12" cy="12" r="3.2" stroke="#2997ff" stroke-width="1.8"/>
+        </svg>
+        <h1>YOLOv8 实时目标检测系统</h1>
+    </div>
+    <div class="status-pill" id="statusPill">
+        <div class="status-dot"></div>
+        <span id="statusText">检测中</span>
+    </div>
+</nav>
+
+<div class="layout">
+
+    <!-- 左列：视频 + 实时统计 -->
+    <div class="left-col">
+        <div class="card video-card">
+            <div class="video-wrap">
+                <img src="/video_feed" alt="实时视频流" id="videoFeed">
+                <div class="live-badge">
+                    <div class="live-dot"></div>
+                    <span>LIVE</span>
+                </div>
+                <div class="video-warning" id="videoWarning">
+                    <div class="warn-icon">⚠️</div>
+                    <div class="warn-text" id="videoWarningText"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="stat-row">
+            <div class="stat-card">
+                <div class="label">检测目标</div>
+                <div class="value" id="totalObjects">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">最高置信度</div>
+                <div class="value blue" id="maxConf">--</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">类别种类</div>
+                <div class="value" id="classTypes">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">平均置信度</div>
+                <div class="value" id="avgConf">--</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 右列：面板区 -->
+    <div class="right-col">
+
+        <!-- 性能指标面板（新增） -->
+        <div class="card">
+            <div class="card-header">
+                <h2>性能指标</h2>
+                <div class="subtitle">每 1s 刷新</div>
+            </div>
+            <div class="metric-grid">
+                <div class="metric-cell">
+                    <div class="m-label">管线帧率</div>
+                    <div class="m-value" id="mFps">--</div>
+                </div>
+                <div class="metric-cell">
+                    <div class="m-label">推理耗时</div>
+                    <div class="m-value" id="mInfer">--</div>
+                </div>
+                <div class="metric-cell">
+                    <div class="m-label">P95 延迟</div>
+                    <div class="m-value" id="mP95">--</div>
+                </div>
+                <div class="metric-cell">
+                    <div class="m-label">循环耗时</div>
+                    <div class="m-value" id="mLoop">--</div>
+                </div>
+                <div class="metric-cell">
+                    <div class="m-label">ID 切换（越低越稳）</div>
+                    <div class="m-value" id="mIdSwitch">--</div>
+                </div>
+                <div class="metric-cell" id="gpuCell" style="display:none;">
+                    <div class="m-label">GPU 显存</div>
+                    <div class="m-value" id="mGpu">--</div>
+                </div>
+            </div>
+            <div class="trend-box">
+                <div class="trend-legend">
+                    <span class="key"><span class="swatch infer"></span>推理耗时</span>
+                    <span class="key"><span class="swatch loop"></span>循环耗时</span>
+                </div>
+                <canvas id="trendCanvas"></canvas>
+            </div>
+        </div>
+
+        <!-- 运行参数面板（新增） -->
+        <div class="card">
+            <div class="card-header">
+                <h2>运行参数</h2>
+                <div class="subtitle">模型与图像源</div>
+            </div>
+            <div class="param-row"><span class="p-key">模型</span><span class="p-value" id="pModel">--</span></div>
+            <div class="param-row"><span class="p-key">推理设备</span><span class="p-value accent" id="pDevice">--</span></div>
+            <div class="param-row"><span class="p-key">检测输入分辨率</span><span class="p-value" id="pImgsz">--</span></div>
+            <div class="param-row"><span class="p-key">置信度阈值</span><span class="p-value" id="pConf">--</span></div>
+            <div class="param-row"><span class="p-key">跟踪器</span><span class="p-value">ByteTrack</span></div>
+            <div class="param-row"><span class="p-key">图像源分辨率</span><span class="p-value" id="pCamRes">--</span></div>
+            <div class="param-row"><span class="p-key">累计检出框数</span><span class="p-value" id="pDetTotal">--</span></div>
+            <div class="param-row"><span class="p-key">运行时长</span><span class="p-value" id="pUptime">--</span></div>
+        </div>
+
+        <!-- 检测结果面板 -->
+        <div class="card">
+            <div class="card-header">
+                <h2>检测结果</h2>
+                <div class="subtitle">每 200ms 刷新</div>
+            </div>
+            <div class="class-tags" id="classTags" style="display:none;"></div>
+            <div class="detection-list" id="detectionList">
+                <div class="empty-state">
+                    <div class="icon">📷</div>
+                    <p>正在初始化摄像头...<br>请稍候，即将开始实时检测</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 图像源面板 -->
+        <div class="card">
+            <div class="card-header">
+                <h2>图像源</h2>
+                <div class="subtitle" id="sourceStatus">读取中...</div>
+            </div>
+            <input type="text" class="src-input" id="phoneUrl" placeholder="手机流地址，如 http://192.168.1.100:8080/video" />
+            <div class="btn-row">
+                <button id="btnConnect" class="btn btn-primary">连接手机摄像头</button>
+                <button id="btnLocal" class="btn btn-ghost">本地摄像头</button>
+            </div>
+            <div class="orient-row">
+                <span class="orient-label">画面方向</span>
+                <button class="rot-chip" data-rot="0">0°</button>
+                <button class="rot-chip" data-rot="90">90°</button>
+                <button class="rot-chip" data-rot="180">180°</button>
+                <button class="rot-chip" data-rot="270">270°</button>
+                <button class="rot-chip" id="btnMirror">镜像：无</button>
+            </div>
+            <div class="src-hint">手机装 IP Webcam / DroidCam，开启后把推流地址填到上面即可，RTSP 也支持。<br>画面方向不对时点旋转按钮校正，即时生效。</div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    // ============================================================
+    // 类别颜色映射
+    // ============================================================
+    const classColors = {};
+    let colorIdx = 0;
+    const palette = [
+        '#0066cc', '#34c759', '#ff9500', '#ff3b30', '#af52de',
+        '#5ac8fa', '#ffcc00', '#ff6482', '#64d2ff', '#30d158',
+        '#bf5af2', '#ffd60a', '#0a84ff', '#66d4cf', '#98989d'
+    ];
+
+    function getClassColor(cls) {
+        if (!classColors[cls]) {
+            classColors[cls] = palette[colorIdx % palette.length];
+            colorIdx++;
+        }
+        return classColors[cls];
+    }
+
+    // ============================================================
+    // 中文类名映射
+    // ============================================================
+    const cnNames = {
+        'person': '行人', 'bicycle': '自行车', 'car': '汽车',
+        'motorcycle': '摩托车', 'airplane': '飞机', 'bus': '公交车',
+        'train': '火车', 'truck': '卡车', 'boat': '船',
+        'traffic light': '红绿灯', 'fire hydrant': '消防栓',
+        'stop sign': '停止标志', 'parking meter': '停车计时器',
+        'bench': '长椅', 'bird': '鸟', 'cat': '猫',
+        'dog': '狗', 'horse': '马', 'sheep': '羊', 'cow': '牛',
+        'elephant': '大象', 'bear': '熊', 'zebra': '斑马',
+        'giraffe': '长颈鹿', 'backpack': '背包', 'umbrella': '雨伞',
+        'handbag': '手提包', 'tie': '领带', 'suitcase': '行李箱',
+        'frisbee': '飞盘', 'skis': '滑雪板', 'snowboard': '滑雪单板',
+        'sports ball': '球', 'kite': '风筝', 'baseball bat': '棒球棒',
+        'baseball glove': '棒球手套', 'skateboard': '滑板',
+        'surfboard': '冲浪板', 'tennis racket': '网球拍',
+        'bottle': '瓶子', 'wine glass': '酒杯', 'cup': '杯子',
+        'fork': '叉子', 'knife': '刀', 'spoon': '勺子',
+        'bowl': '碗', 'banana': '香蕉', 'apple': '苹果',
+        'sandwich': '三明治', 'orange': '橙子', 'broccoli': '西兰花',
+        'carrot': '胡萝卜', 'hot dog': '热狗', 'pizza': '披萨',
+        'donut': '甜甜圈', 'cake': '蛋糕', 'chair': '椅子',
+        'couch': '沙发', 'potted plant': '盆栽', 'bed': '床',
+        'dining table': '餐桌', 'toilet': '马桶', 'tv': '电视',
+        'laptop': '笔记本电脑', 'mouse': '鼠标', 'remote': '遥控器',
+        'keyboard': '键盘', 'cell phone': '手机', 'microwave': '微波炉',
+        'oven': '烤箱', 'toaster': '烤面包机', 'sink': '水槽',
+        'refrigerator': '冰箱', 'book': '书', 'clock': '时钟',
+        'vase': '花瓶', 'scissors': '剪刀', 'teddy bear': '泰迪熊',
+        'hair drier': '吹风机', 'toothbrush': '牙刷',
+        // 开放词汇新增的日常物品
+        'water dispenser': '饮水机', 'trash can': '垃圾桶', 'power strip': '插线板',
+        'wall outlet': '插座', 'monitor': '显示器', 'door': '门', 'window': '窗户',
+        'curtain': '窗帘', 'toy': '玩具', 'charger': '充电器', 'cable': '数据线',
+        'earphones': '耳机', 'headphones': '头戴耳机', 'glasses': '眼镜',
+        'pen': '笔', 'notebook': '笔记本', 'paper': '纸张', 'shoe': '鞋子',
+        'tissue box': '纸巾盒', 'kettle': '水壶', 'pot': '锅', 'pan': '平底锅',
+        'fruit': '水果', 'router': '路由器', 'fan': '风扇',
+        'air conditioner': '空调', 'pillow': '枕头', 'blanket': '毯子',
+        'towel': '毛巾', 'soap': '肥皂', 'mirror': '镜子', 'wallet': '钱包',
+        'keys': '钥匙', 'tablet': '平板', 'smart speaker': '智能音箱',
+        'camera': '相机', 'desk lamp': '台灯', 'calculator': '计算器',
+        'stapler': '订书机', 'mug': '马克杯', 'thermos': '保温杯',
+        'water bottle': '水瓶', 'slippers': '拖鞋', 'plastic bag': '塑料袋'
+    };
+
+    function toCn(name) {
+        return cnNames[name] || name;
+    }
+
+    function confLevel(c) {
+        if (c >= 0.7) return { cls: 'conf-high', bar: 'bar-high' };
+        if (c >= 0.45) return { cls: 'conf-mid', bar: 'bar-mid' };
+        return { cls: 'conf-low', bar: 'bar-low' };
+    }
+
+    // ============================================================
+    // 检测结果轮询（200ms）
+    // ============================================================
+    let lastJson = '';
+
+    async function fetchDetections() {
+        try {
+            const res = await fetch('/detections');
+            const data = await res.json();
+            const json = JSON.stringify(data);
+            if (json !== lastJson) {
+                lastJson = json;
+                renderDetections(data);
+            }
+        } catch (e) { /* 静默失败，保持轮询 */ }
+    }
+
+    function renderDetections(detections) {
+        const list = document.getElementById('detectionList');
+        const tagsEl = document.getElementById('classTags');
+
+        document.getElementById('totalObjects').textContent = detections.length;
+
+        if (detections.length === 0) {
+            document.getElementById('maxConf').textContent = '--';
+            document.getElementById('avgConf').textContent = '--';
+            document.getElementById('classTypes').textContent = '0';
+            tagsEl.style.display = 'none';
+            list.innerHTML = `
+                <div class="empty-state">
+                    <div class="icon">🔍</div>
+                    <p>暂未检测到目标<br>请将物体放置在摄像头前</p>
+                </div>`;
+            return;
+        }
+
+        const confs = detections.map(d => d.confidence);
+        const maxConf = Math.max(...confs);
+        const avgConf = confs.reduce((a, b) => a + b, 0) / confs.length;
+        document.getElementById('maxConf').textContent = (maxConf * 100).toFixed(1) + '%';
+        document.getElementById('avgConf').textContent = (avgConf * 100).toFixed(1) + '%';
+
+        const classCounts = {};
+        detections.forEach(d => {
+            classCounts[d.class] = (classCounts[d.class] || 0) + 1;
+        });
+        const uniqueClasses = Object.keys(classCounts);
+        document.getElementById('classTypes').textContent = uniqueClasses.length;
+
+        tagsEl.style.display = 'flex';
+        tagsEl.innerHTML = uniqueClasses.map(cls =>
+            `<span class="class-tag">
+                <span style="background:${getClassColor(cls)}; width:8px; height:8px; border-radius:50%; display:inline-block;"></span>
+                ${toCn(cls)}
+                <span class="count">${classCounts[cls]}</span>
+            </span>`
+        ).join('');
+
+        const sorted = [...detections].sort((a, b) => b.confidence - a.confidence);
+        list.innerHTML = sorted.map(d => {
+            const color = getClassColor(d.class);
+            const level = confLevel(d.confidence);
+            const pct = (d.confidence * 100).toFixed(1);
+            const [x1, y1, x2, y2] = d.bbox;
+            const trackTag = d.id != null ? ` #${d.id}` : '';
+            return `
+                <div class="detection-item">
+                    <div class="det-color-dot" style="background:${color}"></div>
+                    <div class="det-info">
+                        <div class="det-class">${toCn(d.class)} <span class="en">${d.class}${trackTag}</span></div>
+                        <div class="det-bbox">[${x1.toFixed(0)}, ${y1.toFixed(0)}, ${x2.toFixed(0)}, ${y2.toFixed(0)}]</div>
+                    </div>
+                    <div class="det-confidence">
+                        <div class="det-conf-value ${level.cls}">${pct}%</div>
+                        <div class="conf-bar"><div class="conf-bar-fill ${level.bar}" style="width:${pct}%"></div></div>
+                    </div>
+                </div>`;
+        }).join('');
+    }
+
+    // ============================================================
+    // 性能指标轮询（1s）+ 推理耗时趋势图
+    // ============================================================
+    const TREND_MAX = 120;
+    const trendInfer = [];
+    const trendLoop = [];
+
+    function fpsClass(fps) {
+        if (fps >= 20) return 'good';
+        if (fps >= 10) return 'warn';
+        return 'bad';
+    }
+
+    function idswClass(n) {
+        if (n === 0) return 'good';
+        if (n <= 10) return 'warn';
+        return 'bad';
+    }
+
+    function fmtUptime(sec) {
+        sec = Math.floor(sec);
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = sec % 60;
+        if (h > 0) return `${h} 时 ${m} 分`;
+        if (m > 0) return `${m} 分 ${s} 秒`;
+        return `${s} 秒`;
+    }
+
+    function drawTrend() {
+        const canvas = document.getElementById('trendCanvas');
+        const dpr = window.devicePixelRatio || 1;
+        const w = canvas.clientWidth, h = canvas.clientHeight;
+        if (w === 0) return;
+        if (canvas.width !== w * dpr) {
+            canvas.width = w * dpr;
+            canvas.height = h * dpr;
+        }
+        const ctx = canvas.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, w, h);
+        if (trendInfer.length < 2) return;
+
+        const maxV = Math.max(...trendInfer, ...trendLoop, 1);
+        const pad = 6;
+        const px = i => pad + (i / (TREND_MAX - 1)) * (w - pad * 2);
+        const py = v => h - pad - (v / maxV) * (h - pad * 2);
+
+        function stroke(data, color, dashed) {
+            ctx.beginPath();
+            ctx.strokeStyle = color;
+            ctx.lineWidth = dashed ? 1.5 : 2;
+            ctx.setLineDash(dashed ? [3, 3] : []);
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            const offset = TREND_MAX - data.length;
+            data.forEach((v, i) => {
+                const x = px(offset + i), y = py(v);
+                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+        }
+
+        stroke(trendLoop, '#7a7a7a', true);
+        stroke(trendInfer, '#0066cc', false);
+    }
+
+    async function fetchMetrics() {
+        try {
+            const res = await fetch('/metrics');
+            const m = await res.json();
+
+            const fpsEl = document.getElementById('mFps');
+            fpsEl.textContent = m.pipeline_fps + ' FPS';
+            fpsEl.className = 'm-value ' + fpsClass(m.pipeline_fps);
+
+            document.getElementById('mInfer').textContent = m.infer_ms_avg + ' ms';
+            document.getElementById('mP95').textContent = m.infer_ms_p95 + ' ms';
+            document.getElementById('mLoop').textContent = m.loop_ms_avg + ' ms';
+
+            const idswEl = document.getElementById('mIdSwitch');
+            idswEl.textContent = m.id_switches_total + ' 次';
+            idswEl.className = 'm-value ' + idswClass(m.id_switches_total);
+
+            if (m.gpu_mem_mb != null) {
+                document.getElementById('gpuCell').style.display = 'block';
+                document.getElementById('mGpu').textContent = Math.round(m.gpu_mem_mb) + ' MB';
+            }
+
+            document.getElementById('pDetTotal').textContent = m.detections_total;
+            document.getElementById('pUptime').textContent = fmtUptime(m.uptime_s);
+
+            trendInfer.push(m.infer_ms_avg);
+            trendLoop.push(m.loop_ms_avg);
+            if (trendInfer.length > TREND_MAX) trendInfer.shift();
+            if (trendLoop.length > TREND_MAX) trendLoop.shift();
+            drawTrend();
+        } catch (e) { /* 静默失败 */ }
+    }
+
+    // ============================================================
+    // 运行参数（/model_info 加载一次）
+    // ============================================================
+    async function fetchModelInfo() {
+        try {
+            const res = await fetch('/model_info');
+            const info = await res.json();
+            document.getElementById('pModel').textContent = info.model;
+            document.getElementById('pDevice').textContent = info.device;
+            document.getElementById('pImgsz').textContent = info.imgsz + ' px';
+            document.getElementById('pConf').textContent = info.confidence_threshold.toFixed(2);
+        } catch (e) { /* 静默失败 */ }
+    }
+
+    // ============================================================
+    // 图像源状态 / 黑屏检测（1s）
+    // ============================================================
+    async function refreshSource() {
+        try {
+            const res = await fetch('/source');
+            const data = await res.json();
+            const el = document.getElementById('sourceStatus');
+            const pill = document.getElementById('statusPill');
+            const pillText = document.getElementById('statusText');
+            const url = data.active_url || data.configured_url || '';
+            const warn = document.getElementById('videoWarning');
+            const warnText = document.getElementById('videoWarningText');
+
+            if (data.orientation &&
+                (data.orientation.rotate !== curOrient.rotate ||
+                 data.orientation.mirror !== curOrient.mirror)) {
+                curOrient = data.orientation;
+                renderOrientButtons();
+            }
+
+            if (data.camera && data.camera.width) {
+                document.getElementById('pCamRes').textContent =
+                    `${data.camera.width} × ${data.camera.height}`;
+            }
+
+            if (url) {
+                // 副标题依据实际连接状态：已配置地址但尚未连上时明确提示，不再谎报"已连接"
+                el.textContent = data.connected ? '手机流已连接' : '手机流未连接';
+                el.style.color = data.connected ? '#34c759' : '#ff9500';
+            } else {
+                el.textContent = '本地摄像头模式';
+                el.style.color = '#7a7a7a';
+            }
+
+            if (data.connected) {
+                pill.classList.remove('offline');
+                pillText.textContent = url ? '检测中 · 手机摄像头' : '检测中 · 本地摄像头';
+            } else {
+                pill.classList.add('offline');
+                pillText.textContent = '图像源未连接';
+            }
+
+            if (!data.connected) {
+                warn.style.display = 'flex';
+                warnText.innerHTML = url
+                    ? '手机流尚未连接。<br>请确认：① 手机和电脑在同一 WiFi；② 手机 App 已开启服务；③ 地址末尾带 <b>/video</b>（如 http://IP:8080/video）。'
+                    : '没有可用的图像源。<br>请在下方填手机推流地址，或检查本地摄像头。';
+            } else if (data.black_warning) {
+                warn.style.display = 'flex';
+                warnText.innerHTML = url
+                    ? '手机流已连接，但画面为黑。<br>请检查手机端摄像头是否被遮挡、App 相机权限，或换一个推流 App。'
+                    : '本地摄像头画面为黑。<br>最常见原因是<b>物理隐私快门/滑盖未打开</b>——笔记本屏幕上方镜头旁有个小滑块，请拨开；或检查镜头是否被遮挡。';
+            } else {
+                warn.style.display = 'none';
+            }
+        } catch (e) { /* 静默失败 */ }
+    }
+
+    function connectPhone() {
+        const url = document.getElementById('phoneUrl').value.trim();
+        if (!url) {
+            alert('请输入手机摄像头流地址，例如 http://192.168.1.100:8080/video');
+            return;
+        }
+        fetch('/set_source', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+        }).then(r => r.json().then(data => ({ ok: r.ok, data }))).then(({ ok, data }) => {
+            const el = document.getElementById('sourceStatus');
+            if (!ok) {
+                alert((data && data.error) || '地址无效：仅支持 http / https / rtsp 推流地址');
+                el.textContent = '地址被拒绝';
+                el.style.color = '#ff3b30';
+                return;
+            }
+            el.textContent = '连接中...';
+            el.style.color = '#ff9500';
+            setTimeout(refreshSource, 2500);
+        }).catch(() => {
+            alert('切换图像源失败，请检查服务是否运行');
+        });
+    }
+
+    function useLocal() {
+        document.getElementById('phoneUrl').value = '';
+        fetch('/set_source', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: '' })
+        }).then(() => {
+            const el = document.getElementById('sourceStatus');
+            el.textContent = '切换中...';
+            el.style.color = '#ff9500';
+            setTimeout(refreshSource, 2500);
+        }).catch(() => {
+            alert('切换图像源失败，请检查服务是否运行');
+        });
+    }
+
+    // ============================================================
+    // 画面方向（旋转 / 镜像）
+    // ============================================================
+    let curOrient = { rotate: 0, mirror: '' };
+
+    // 镜像三态：无 → 水平 h → 垂直 v → 无
+    const MIRROR_LABELS = { '': '镜像：无', 'h': '镜像：水平', 'v': '镜像：垂直' };
+
+    function renderOrientButtons() {
+        document.querySelectorAll('.rot-chip[data-rot]').forEach(btn => {
+            btn.classList.toggle('active', parseInt(btn.dataset.rot) === curOrient.rotate);
+        });
+        const mirrorBtn = document.getElementById('btnMirror');
+        mirrorBtn.classList.toggle('active', curOrient.mirror !== '');
+        mirrorBtn.textContent = MIRROR_LABELS[curOrient.mirror] || MIRROR_LABELS[''];
+    }
+
+    function setOrientation(patch) {
+        fetch('/set_orientation', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(patch)
+        }).then(r => r.json()).then(data => {
+            if (data.orientation) curOrient = data.orientation;
+            renderOrientButtons();
+        }).catch(() => {});
+    }
+
+    document.querySelectorAll('.rot-chip[data-rot]').forEach(btn => {
+        btn.addEventListener('click', () => setOrientation({ rotate: parseInt(btn.dataset.rot) }));
+    });
+    document.getElementById('btnMirror').addEventListener('click', () => {
+        // 三态循环：无 → 水平(h) → 垂直(v) → 无
+        const next = curOrient.mirror === '' ? 'h' : (curOrient.mirror === 'h' ? 'v' : '');
+        setOrientation({ mirror: next });
+    });
+
+    document.getElementById('btnConnect').addEventListener('click', connectPhone);
+    document.getElementById('btnLocal').addEventListener('click', useLocal);
+    window.addEventListener('resize', drawTrend);
+
+    // ============================================================
+    // 启动（链式调度：上一轮请求完成后才安排下一轮，
+    // 避免慢响应时旧请求晚到覆盖新数据 / 请求堆积乱序）
+    // ============================================================
+    function pollLoop(fn, interval) {
+        (async function loop() {
+            try { await fn(); } catch (e) { /* 静默失败，保持轮询 */ }
+            setTimeout(loop, interval);
+        })();
+    }
+
+    fetchModelInfo();
+    pollLoop(refreshSource, 1000);
+    pollLoop(fetchMetrics, 1000);
+    pollLoop(fetchDetections, 200);
+</script>
+
+</body>
+</html>

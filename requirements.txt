@@ -1,0 +1,9 @@
+flask>=3.0
+ultralytics>=8.0
+opencv-python>=4.8
+numpy>=1.24
+# torch 是 ultralytics 的运行时必需依赖，显式声明版本下限。
+# 注意：pip 默认安装 CPU 版；如需 GPU 推理，请按本机 CUDA 版本
+# 从官方索引安装对应构建，例如：
+#   pip install torch --index-url https://download.pytorch.org/whl/cu121
+torch>=2.0

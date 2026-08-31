@@ -15,5 +15,10 @@ cam_test/
 *.log
 video_feed_sample.bin
 benchmark_results.csv
+_front_check.js
+
+# ===== 滚动录制段与用户画的区域（运行时产物，不入库）=====
+recordings/
+zones.json
 
 # 注：dataset/（含已采集帧与 data.yaml）需要入库，不忽略

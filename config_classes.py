@@ -28,3 +28,10 @@ DETECTION_CLASSES = [
     "tablet", "smart speaker", "camera", "desk lamp", "calculator", "stapler",
     "mug", "thermos", "water bottle", "slippers", "plastic bag",
 ]
+
+# 区域入侵报警关注的类别（人员与动物）：zones.py 检查线程仅对这些类别判定入侵。
+# 取 COCO 类别中的行人/动物子集；frozenset 保证查找 O(1) 且不可篡改。
+ALERT_CLASSES = frozenset({
+    "person", "bird", "cat", "dog", "horse", "sheep", "cow",
+    "elephant", "bear", "zebra", "giraffe",
+})

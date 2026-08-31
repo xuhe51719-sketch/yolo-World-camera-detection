@@ -13,7 +13,9 @@ import traceback
 import cv2
 import numpy as np
 
+import recorder
 import state
+import tracks
 from camera import apply_orientation, open_camera
 from config import settings
 from config_classes import DETECTION_CLASSES
@@ -162,6 +164,7 @@ def detection_loop():
 
             # 画面方向校正（手机流方向固定，在电脑端旋转/镜像；检测框画在校正后的图上）
             frame = apply_orientation(frame)
+            state.display_size = (frame.shape[1], frame.shape[0])   # 区域入侵判定归一化→像素换算用
 
             # 黑帧检测：整帧平均亮度过低且持续，则标记黑屏
             state.frame_mean = float(frame.mean())
@@ -230,7 +233,13 @@ def detection_loop():
             # 绘制检测框：推理帧用最新结果，跳帧复用上次结果（避免框逐帧闪烁）
             with state.detections_lock:
                 draw_dets = state.latest_detections
+            recorder.enqueue(frame.copy())   # 入滚动录制队列（非阻塞；入队副本，避免录制线程与主管线就地绘制竞争）
             draw_detection_boxes(frame, draw_dets)
+            # 轨迹绘制是旁路功能：任何异常都不允许影响检测主管线（与录制旁路同设计）
+            try:
+                tracks.update_and_draw_trajectories(frame, draw_dets)   # 按跟踪 ID 画运动尾迹
+            except Exception:
+                logger.debug("轨迹绘制异常（已忽略，不影响主管线）\n%s", traceback.format_exc())
 
             # 编码为 JPEG 流并保存最新帧（同时刷新帧时间戳，/health 据此判断是否有新帧）
             ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])

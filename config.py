@@ -3,7 +3,9 @@
 集中配置模块：全项目所有环境变量读取与默认常量都收敛在这里。
 环境变量名与原实现保持完全兼容（YOLO_MODEL / YOLO_IMGSZ / YOLO_HALF /
 PHONE_ROTATE / PHONE_MIRROR / PHONE_CAMERA_URL / FLASK_HOST / FLASK_PORT /
-DETECTION_INTERVAL / LOG_LEVEL）。
+DETECTION_INTERVAL / LOG_LEVEL / RECORD_ENABLED / RECORD_DIR / RECORD_FPS /
+RECORD_SEGMENT_S / RECORD_RETENTION_MIN / TRAIL_ENABLED / TRAIL_MAX_POINTS /
+ALERT_COOLDOWN_S / ALERT_SOUND_S / ZONES_FILE）。
 
 所有相对路径以项目根（BASE_DIR）锚定，避免依赖运行时工作目录。
 本模块导入时无任何模型加载 / 摄像头连接副作用。
@@ -64,6 +66,22 @@ class AppConfig:
     # --- 日志 ---
     log_level: str                # 日志级别（环境变量 LOG_LEVEL，默认 INFO）
 
+    # --- 滚动录制 ---
+    record_enabled: bool          # 是否启用滚动录制（RECORD_ENABLED=0 关闭）
+    record_dir: str               # 录制段存放目录（默认项目根 recordings/）
+    record_fps: int               # 录制节流帧率（写入段的最大帧率）
+    record_segment_s: int         # 每段时长（秒），到点关段开新段
+    record_retention_min: int     # 滚动保留时长（分钟），超出的最旧段自动删除（最多约 1 小时）
+
+    # --- 轨迹绘制 ---
+    trail_enabled: bool           # 是否在画面上绘制跟踪轨迹（TRAIL_ENABLED=0 关闭）
+    trail_max_points: int         # 每条轨迹保留的最大点数（deque maxlen）
+
+    # --- 区域入侵报警 ---
+    alert_cooldown_s: int         # 同一 (区域, 类别) 报警冷却（秒），避免持续滞留重复触发
+    alert_sound_s: int            # 报警音播放时长（秒）
+    zones_file: str               # 区域定义持久化文件（默认项目根 zones.json）
+
     # --- 锚定到项目根的路径 ---
     dataset_dir: str
     dataset_yaml: str
@@ -100,6 +118,19 @@ def load_config():
         flask_host=os.environ.get("FLASK_HOST", "127.0.0.1"),
         flask_port=_env_int("FLASK_PORT", 5000),
         log_level=os.environ.get("LOG_LEVEL", "INFO"),
+        # --- 滚动录制（默认开启；段时长/保留时长配合实现"最多 1 小时滚动"）---
+        record_enabled=os.environ.get("RECORD_ENABLED", "1") != "0",
+        record_dir=_resolve_path(os.environ.get("RECORD_DIR", "recordings")),
+        record_fps=_env_int("RECORD_FPS", 15),
+        record_segment_s=_env_int("RECORD_SEGMENT_S", 60),
+        record_retention_min=_env_int("RECORD_RETENTION_MIN", 60),
+        # --- 轨迹绘制 ---
+        trail_enabled=os.environ.get("TRAIL_ENABLED", "1") != "0",
+        trail_max_points=_env_int("TRAIL_MAX_POINTS", 60),
+        # --- 区域入侵报警 ---
+        alert_cooldown_s=_env_int("ALERT_COOLDOWN_S", 30),
+        alert_sound_s=_env_int("ALERT_SOUND_S", 10),
+        zones_file=_resolve_path(os.environ.get("ZONES_FILE", "zones.json")),
         dataset_dir=os.path.join(BASE_DIR, "dataset"),
         dataset_yaml=os.path.join(BASE_DIR, "dataset", "data.yaml"),
         cam_test_dir=os.path.join(BASE_DIR, "cam_test"),

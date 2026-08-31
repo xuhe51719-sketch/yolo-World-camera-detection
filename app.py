@@ -12,6 +12,9 @@ YOLOv8 实时目标检测系统
   metrics.py   量化指标采集
   camera.py    摄像头打开 / 重连 / 地址纠错 / 画面方向
   detector.py  模型惰性单例 / 检测循环 / 绘制
+  recorder.py  滚动录制（最多 1 小时）/ 回放路由（新增）
+  tracks.py    按跟踪 ID 的轨迹绘制（新增）
+  zones.py     区域入侵报警 / 事件 / 报警音（新增）
   routes.py    Flask 路由（对外契约不变）
   app.py       create_app() 工厂 + main() 入口
 
@@ -53,12 +56,16 @@ def setup_logging():
 # ============================================================
 def create_app():
     """创建 Flask 应用并注册全部路由（不启动任何后台线程）"""
+    from recorder import register_recording_routes
     from routes import register_routes
+    from zones import register_zone_routes
 
     app = Flask(__name__,
                 template_folder=os.path.join(BASE_DIR, "templates"),
                 static_folder=os.path.join(BASE_DIR, "static"))
     register_routes(app)
+    register_recording_routes(app)   # 滚动录制状态/列表/回放（新增，不影响既有契约）
+    register_zone_routes(app)        # 区域/事件/报警（新增，不影响既有契约）
     return app
 
 
@@ -69,8 +76,8 @@ _shutdown_lock = threading.Lock()
 _shutdown_done = False
 
 
-def _shutdown(worker_thread=None, timeout=8.0):
-    """优雅退出：置运行标志为 False，等待检测/采集线程收尾（带超时，
+def _shutdown(worker_thread=None, recorder_thread=None, zones_thread=None, timeout=8.0):
+    """优雅退出：置运行标志为 False，等待检测/录制/区域检查线程收尾（带超时，
     避免卡死），摄像头由 detection_loop 退出时自行 release。
     atexit 与 KeyboardInterrupt 两条路径都可能触发，用标志保证幂等。"""
     global _shutdown_done
@@ -83,13 +90,19 @@ def _shutdown(worker_thread=None, timeout=8.0):
     if not state.running:
         return
     logger.info("收到退出信号，正在停止采集/检测线程...")
-    state.running = False   # 检测循环与重连退避均会检查此标志并退出，同时释放摄像头
+    state.running = False   # 各循环与重连退避均会检查此标志并退出，同时释放摄像头
     if worker_thread is not None and worker_thread.is_alive():
         worker_thread.join(timeout=timeout)
         if worker_thread.is_alive():
             logger.warning("采集/检测线程未在 %.0fs 内退出，强制结束（资源由操作系统回收）", timeout)
         else:
             logger.info("采集/检测线程已正常退出，摄像头已释放。")
+    # 录制与区域检查线程均为轻量旁路线程，短超时 join 即可
+    for t, name in ((recorder_thread, "录制"), (zones_thread, "区域检查")):
+        if t is not None and t.is_alive():
+            t.join(timeout=3.0)
+            if t.is_alive():
+                logger.warning("%s线程未在 3s 内退出", name)
     logger.info("服务已停止。")
 
 
@@ -138,6 +151,11 @@ def main():
         print(f"  图像源: 手机摄像头 {settings.phone_camera_url}")
     else:
         print("  图像源: 本地摄像头（自动选择）")
+    if settings.record_enabled:
+        print(f"  录像: 开启（保留约 {settings.record_retention_min} 分钟滚动，"
+              f"每段 {settings.record_segment_s}s，RECORD_ENABLED=0 可关闭）")
+    else:
+        print("  录像: 关闭（RECORD_ENABLED=1 可开启）")
     print(f"  打开浏览器访问: http://{'localhost' if settings.flask_host == '127.0.0.1' else settings.flask_host}:{settings.flask_port}")
     if settings.flask_host != '127.0.0.1':
         logger.warning("已监听 %s，局域网内其他设备可访问本服务", settings.flask_host)
@@ -153,7 +171,18 @@ def main():
     from detector import detection_loop
     t = threading.Thread(target=detection_loop, daemon=True)
     t.start()
-    atexit.register(_shutdown, worker_thread=t)
+
+    # 旁路线程：滚动录制（可通过 RECORD_ENABLED=0 关闭）与区域入侵检查（约 5Hz）
+    recorder_thread = None
+    if settings.record_enabled:
+        from recorder import start_recorder
+        recorder_thread = start_recorder()
+    from zones import zones_check_loop
+    zones_thread = threading.Thread(target=zones_check_loop, name="zones-check", daemon=True)
+    zones_thread.start()
+
+    atexit.register(_shutdown, worker_thread=t,
+                    recorder_thread=recorder_thread, zones_thread=zones_thread)
 
     # 给后台线程一点时间连接图像源并完成第一帧检测
     import state
@@ -173,7 +202,8 @@ def main():
     except KeyboardInterrupt:
         # Ctrl+C：先打印再走清理（atexit 亦会兜底，_shutdown 幂等不会重复执行）
         logger.info("捕获到 Ctrl+C，开始清理...")
-        _shutdown(worker_thread=t)
+        _shutdown(worker_thread=t, recorder_thread=recorder_thread,
+                  zones_thread=zones_thread)
 
 
 if __name__ == '__main__':

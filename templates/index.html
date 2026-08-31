@@ -505,6 +505,216 @@
             line-height: 1.6;
         }
 
+        /* ================= 区域叠加画布 ================= */
+        #zoneCanvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            pointer-events: none;   /* 非编辑模式不拦截鼠标 */
+        }
+
+        #zoneCanvas.editing {
+            pointer-events: auto;
+            cursor: crosshair;
+        }
+
+        /* ================= 录制 / 回放徽标 ================= */
+        .rec-badge {
+            position: absolute;
+            top: 16px; right: 16px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(0, 0, 0, 0.75);
+            padding: 5px 12px;
+            border-radius: var(--pill);
+            font-size: 11px;
+            font-weight: 600;
+            color: #fff;
+            letter-spacing: 0.5px;
+            z-index: 3;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .rec-dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: var(--red);
+            animation: pulse 1s infinite;
+        }
+
+        .play-badge {
+            position: absolute;
+            top: 16px; right: 16px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(0, 102, 204, 0.88);
+            padding: 5px 12px;
+            border-radius: var(--pill);
+            font-size: 11px;
+            font-weight: 600;
+            color: #fff;
+            letter-spacing: 0.5px;
+            z-index: 4;
+        }
+
+        /* ================= 顶部报警横幅 ================= */
+        .alarm-banner {
+            position: fixed;
+            top: 64px; left: 50%;
+            transform: translateX(-50%) translateY(-12px);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--red);
+            color: #fff;
+            padding: 10px 22px;
+            border-radius: var(--pill);
+            font-size: 14px;
+            font-weight: 600;
+            box-shadow: 0 8px 24px rgba(255, 59, 48, 0.35);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease, transform 0.25s ease;
+            z-index: 100;
+        }
+
+        .alarm-banner.show {
+            opacity: 1;
+            transform: translateX(-50%) translateY(0);
+            animation: bannerBlink 0.9s ease-in-out infinite;
+        }
+
+        @keyframes bannerBlink {
+            0%, 100% { background: var(--red); box-shadow: 0 8px 24px rgba(255, 59, 48, 0.35); }
+            50%      { background: #c9271d; box-shadow: 0 8px 36px rgba(255, 59, 48, 0.75); }
+        }
+
+        /* ================= 轻提示 Toast ================= */
+        .toast {
+            position: fixed;
+            bottom: 28px; left: 50%;
+            transform: translateX(-50%) translateY(8px);
+            background: rgba(29, 29, 31, 0.92);
+            color: #fff;
+            font-size: 13px;
+            padding: 10px 20px;
+            border-radius: var(--pill);
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease, transform 0.25s ease;
+            z-index: 100;
+        }
+
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+        /* ================= 区域 / 事件 / 片段列表 ================= */
+        .mini-list {
+            max-height: 240px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .mini-list::-webkit-scrollbar { width: 4px; }
+        .mini-list::-webkit-scrollbar-track { background: transparent; }
+        .mini-list::-webkit-scrollbar-thumb { background: #d2d2d7; border-radius: 4px; }
+
+        .zone-item, .event-item, .clip-item {
+            background: var(--canvas);
+            border-radius: var(--radius-cell);
+            padding: 10px 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .clip-item.active { outline: 1.5px solid var(--blue); }
+
+        .zone-swatch {
+            width: 12px; height: 12px;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+
+        .zone-name {
+            flex: 1;
+            font-size: 13px;
+            font-weight: 600;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .zone-meta {
+            font-size: 11px;
+            color: var(--muted);
+            flex-shrink: 0;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .zone-del {
+            border: none;
+            background: none;
+            color: var(--red);
+            cursor: pointer;
+            font-size: 12px;
+            font-family: inherit;
+            padding: 2px 8px;
+            border-radius: 6px;
+            flex-shrink: 0;
+        }
+
+        .zone-del:hover { background: rgba(255, 59, 48, 0.1); }
+
+        .event-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--red);
+            flex-shrink: 0;
+        }
+
+        .event-item.new { animation: eventIn 0.4s ease; }
+
+        @keyframes eventIn {
+            from { opacity: 0; transform: translateY(-6px); }
+            to   { opacity: 1; transform: none; }
+        }
+
+        .chip-btn {
+            border: 1px solid var(--hairline);
+            background: var(--canvas);
+            border-radius: var(--pill);
+            padding: 5px 12px;
+            font-size: 11px;
+            cursor: pointer;
+            font-family: inherit;
+            color: var(--muted);
+            transition: all 0.15s ease;
+        }
+
+        .chip-btn:hover { background: #e8e8ed; }
+
+        .chip-btn.on {
+            background: var(--green);
+            border-color: var(--green);
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .btn-danger {
+            background: rgba(255, 59, 48, 0.08);
+            color: var(--red);
+            border: 1px solid rgba(255, 59, 48, 0.4);
+        }
+
+        .btn-danger:hover { background: rgba(255, 59, 48, 0.15); }
+
         /* ================= 响应式 ================= */
         @media (max-width: 900px) {
             .layout { grid-template-columns: 1fr; }
@@ -530,17 +740,29 @@
     </div>
 </nav>
 
+<!-- 区域入侵报警横幅（新事件时显示约 10 秒） -->
+<div class="alarm-banner" id="alarmBanner">⚠️ <span id="alarmBannerText"></span></div>
+
+<!-- 轻提示 -->
+<div class="toast" id="toast"></div>
+
 <div class="layout">
 
     <!-- 左列：视频 + 实时统计 -->
     <div class="left-col">
         <div class="card video-card">
-            <div class="video-wrap">
+            <div class="video-wrap" id="videoWrap">
                 <img src="/video_feed" alt="实时视频流" id="videoFeed">
-                <div class="live-badge">
+                <canvas id="zoneCanvas"></canvas>
+                <div class="live-badge" id="liveBadge">
                     <div class="live-dot"></div>
                     <span>LIVE</span>
                 </div>
+                <div class="rec-badge" id="recBadge" style="display:none;">
+                    <div class="rec-dot"></div>
+                    <span id="recInfo">REC</span>
+                </div>
+                <div class="play-badge" id="playBadge" style="display:none;">▶ 回放中</div>
                 <div class="video-warning" id="videoWarning">
                     <div class="warn-icon">⚠️</div>
                     <div class="warn-text" id="videoWarningText"></div>
@@ -641,6 +863,52 @@
                     <p>正在初始化摄像头...<br>请稍候，即将开始实时检测</p>
                 </div>
             </div>
+        </div>
+
+        <!-- 区域报警面板（新增） -->
+        <div class="card">
+            <div class="card-header">
+                <h2>区域报警</h2>
+                <div class="subtitle" id="zoneHint">在画面上绘制警戒区域</div>
+            </div>
+            <div class="btn-row" style="margin-bottom: 10px;">
+                <button id="btnZoneEdit" class="btn btn-ghost">编辑区域</button>
+                <button id="btnZoneSave" class="btn btn-primary">保存区域</button>
+            </div>
+            <div class="btn-row" style="margin-bottom: 10px;">
+                <button id="btnZoneClose" class="btn btn-ghost">闭合当前区域</button>
+                <button id="btnZoneClear" class="btn btn-danger">清除全部</button>
+            </div>
+            <div class="mini-list" id="zoneList"></div>
+        </div>
+
+        <!-- 事件面板（新增） -->
+        <div class="card">
+            <div class="card-header">
+                <h2>事件</h2>
+                <button id="btnAudio" class="chip-btn">🔕 点击启用报警音</button>
+            </div>
+            <div class="btn-row" style="margin-bottom: 10px;">
+                <button id="btnAlertTest" class="btn btn-ghost">手动触发一次测试报警</button>
+            </div>
+            <div class="mini-list" id="eventList"></div>
+        </div>
+
+        <!-- 录像回放面板（新增） -->
+        <div class="card">
+            <div class="card-header">
+                <h2>录像回放</h2>
+                <div class="subtitle">滚动录制 · 最多 1 小时</div>
+            </div>
+            <div class="orient-row" style="margin-top: 0;">
+                <span class="orient-label">倍速</span>
+                <button class="rot-chip speed-chip" data-speed="0.5">0.5×</button>
+                <button class="rot-chip speed-chip active" data-speed="1">1×</button>
+                <button class="rot-chip speed-chip" data-speed="1.5">1.5×</button>
+                <button class="rot-chip speed-chip" data-speed="2">2×</button>
+                <button class="rot-chip" id="btnBackLive" style="margin-left: auto;">返回 LIVE</button>
+            </div>
+            <div class="mini-list" id="clipList" style="margin-top: 10px;"></div>
         </div>
 
         <!-- 图像源面板 -->
@@ -1066,6 +1334,15 @@
         }).then(r => r.json()).then(data => {
             if (data.orientation) curOrient = data.orientation;
             renderOrientButtons();
+            // 后端在旋转/镜像成功后会清空警戒区域：
+            // 前端同步清空本地编辑缓存并重拉 /zones，保持两端一致
+            if (data.regions_cleared) {
+                draftRegions = [];
+                draftPoints = [];
+                fetchZones();
+                drawZones();
+                showToast('画面方向已改变，区域已清空，请重新绘制');
+            }
         }).catch(() => {});
     }
 
@@ -1083,6 +1360,587 @@
     window.addEventListener('resize', drawTrend);
 
     // ============================================================
+    // 轻提示 Toast
+    // ============================================================
+    let toastTimer = null;
+
+    function showToast(msg) {
+        const el = document.getElementById('toast');
+        el.textContent = msg;
+        el.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+    }
+
+    function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, ch => (
+            { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]
+        ));
+    }
+
+    // ============================================================
+    // 区域报警：叠加 canvas + 坐标映射 + 绘制/编辑
+    // ============================================================
+    const zoneCanvas = document.getElementById('zoneCanvas');
+    const videoFeedEl = document.getElementById('videoFeed');
+    const videoWrapEl = document.getElementById('videoWrap');
+
+    let zoneEditing = false;     // 是否处于区域编辑模式
+    let savedRegions = [];       // 服务端已保存的区域（点为 {x, y} 归一化对象）
+    let draftRegions = [];       // 编辑模式下已闭合的草稿区域
+    let draftPoints = [];        // 当前正在绘制的多边形顶点（未闭合）
+    let mouseNorm = null;        // 编辑时鼠标位置的归一化坐标（预览线用）
+    let lastClips = [];          // 最近一次拉到的录像片段列表
+    const playback = { active: false, clip: null, speed: 1 };
+
+    // 区域配色（与类别色板同一套色值，按索引取色保证多区域互不相同）
+    function zoneColor(i) { return palette[i % palette.length]; }
+
+    // 服务端 [[x, y], ...] 与本地 {x, y} 互转
+    function toPoint(p) {
+        return Array.isArray(p) ? { x: p[0], y: p[1] } : { x: p.x, y: p.y };
+    }
+
+    function toPair(p) { return [Number(p.x.toFixed(5)), Number(p.y.toFixed(5))]; }
+
+    /**
+     * 纯函数：计算 object-fit:contain 下视频内容在容器中的实际显示矩形。
+     * 容器宽高比与画面宽高比不一致时浏览器会居中留黑边（letterbox），
+     * 这里复现同一算法：取宽/高缩放中较小者为实际缩放，再居中偏移。
+     * @param {number} nw 画面原始宽（img.naturalWidth）
+     * @param {number} nh 画面原始高（img.naturalHeight）
+     * @param {number} cw 容器宽
+     * @param {number} ch 容器高
+     * @returns {Object|null} 内容区矩形（字段 x, y, w, h, scale，相对容器左上角）；输入非法时返回 null。
+     */
+    function getContentRect(nw, nh, cw, ch) {
+        if (cw <= 0 || ch <= 0) return null;
+        if (!nw || !nh) {
+            // 首帧尚未解码时退化为整个容器，保证编辑仍可用（16:9 容器下无偏移）
+            return { x: 0, y: 0, w: cw, h: ch, scale: 1 };
+        }
+        const scale = Math.min(cw / nw, ch / nh);  // contain：取较小缩放，两边留黑边
+        const w = nw * scale, h = nh * scale;
+        return { x: (cw - w) / 2, y: (ch - h) / 2, w, h, scale };
+    }
+
+    /**
+     * 纯函数：把相对容器左上角的像素坐标映射为画面内容区的 0~1 归一化坐标。
+     * 点击落在黑边（内容区外）时返回 null，避免把信箱偏移误当成画面坐标。
+     * @param {number} px 相对容器的 x 像素
+     * @param {number} py 相对容器的 y 像素
+     * @param {Object} rect getContentRect 的结果（含 x, y, w, h）
+     * @returns {Object|null} 归一化坐标对象（字段 x, y），落在黑边时返回 null
+     */
+    function clickToNorm(px, py, rect) {
+        if (!rect) return null;
+        const nx = (px - rect.x) / rect.w;
+        const ny = (py - rect.y) / rect.h;
+        if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return null;
+        return { x: nx, y: ny };
+    }
+
+    // 取当前视频内容区：容器尺寸 + 画面原始尺寸 → 内容矩形（含 letterbox 修正）
+    function currentContentRect() {
+        return getContentRect(videoFeedEl.naturalWidth, videoFeedEl.naturalHeight,
+                              videoWrapEl.clientWidth, videoWrapEl.clientHeight);
+    }
+
+    // 叠加 canvas 与容器尺寸/设备像素比对齐（同 trendCanvas 的 dpr 适配思路）
+    function syncZoneCanvas() {
+        const dpr = window.devicePixelRatio || 1;
+        const w = videoWrapEl.clientWidth, h = videoWrapEl.clientHeight;
+        if (zoneCanvas.width !== Math.round(w * dpr) || zoneCanvas.height !== Math.round(h * dpr)) {
+            zoneCanvas.width = Math.round(w * dpr);
+            zoneCanvas.height = Math.round(h * dpr);
+        }
+    }
+
+    // 画单个多边形：半透明填充 + 描边 + 顶点圆点；open 时虚线（未闭合预览）
+    function drawRegion(ctx, pts, rect, color, open) {
+        if (!pts.length) return;
+        const px = p => rect.x + p.x * rect.w;
+        const py = p => rect.y + p.y * rect.h;
+        ctx.beginPath();
+        pts.forEach((p, i) => i === 0 ? ctx.moveTo(px(p), py(p)) : ctx.lineTo(px(p), py(p)));
+        if (!open) ctx.closePath();
+        ctx.globalAlpha = 0.18;
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.lineJoin = 'round';
+        ctx.setLineDash(open ? [6, 4] : []);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        pts.forEach(p => {
+            ctx.beginPath();
+            ctx.arc(px(p), py(p), 4, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        });
+    }
+
+    // 重绘叠加层：非编辑画服务端区域，编辑画草稿 + 当前多边形（含鼠标预览线）
+    function drawZones() {
+        syncZoneCanvas();
+        const dpr = window.devicePixelRatio || 1;
+        const ctx = zoneCanvas.getContext('2d');
+        const w = videoWrapEl.clientWidth, h = videoWrapEl.clientHeight;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.clearRect(0, 0, w, h);
+        if (playback.active || w === 0) return;   // 回放期间隐藏叠加层避免误导
+        const rect = currentContentRect();
+        if (!rect) return;
+        if (zoneEditing) {
+            draftRegions.forEach((rg, i) => drawRegion(ctx, rg.points, rect, zoneColor(i), false));
+            if (draftPoints.length) {
+                const pts = draftPoints.slice();
+                if (mouseNorm) pts.push(mouseNorm);   // 预览线：最后一个顶点跟随鼠标
+                drawRegion(ctx, pts, rect, zoneColor(draftRegions.length), true);
+            }
+        } else {
+            savedRegions.forEach((rg, i) => drawRegion(ctx, rg.points, rect, zoneColor(i), false));
+        }
+    }
+
+    function fetchZones() {
+        fetch('/zones').then(r => r.json()).then(d => {
+            savedRegions = (d.regions || []).map(r => ({
+                id: r.id, name: r.name,
+                points: (r.points || []).map(toPoint)
+            }));
+            if (!zoneEditing) { renderZoneList(); drawZones(); }
+        }).catch(() => { /* 静默失败 */ });
+    }
+
+    function renderZoneList() {
+        const el = document.getElementById('zoneList');
+        const regions = zoneEditing ? draftRegions : savedRegions;
+        if (!regions.length) {
+            el.innerHTML = `<div class="empty-state" style="padding: 20px;"><p>${zoneEditing
+                ? '在画面上单击添加顶点，<br>双击或点“闭合当前区域”完成一个多边形'
+                : '尚未设置警戒区域，<br>点“编辑区域”开始绘制'}</p></div>`;
+            return;
+        }
+        el.innerHTML = regions.map((rg, i) => `
+            <div class="zone-item">
+                <span class="zone-swatch" style="background:${zoneColor(i)}"></span>
+                <span class="zone-name">${escapeHtml(rg.name || ('区域 ' + (i + 1)))}</span>
+                <span class="zone-meta">${(rg.points || []).length} 顶点</span>
+                <button class="zone-del" data-idx="${i}">删除</button>
+            </div>`).join('');
+        el.querySelectorAll('.zone-del').forEach(btn => {
+            btn.addEventListener('click', () => deleteZone(parseInt(btn.dataset.idx)));
+        });
+    }
+
+    // 删除单个区域：编辑模式改草稿；非编辑模式直接提交到后端（剔除后重新 POST）
+    function deleteZone(i) {
+        if (zoneEditing) {
+            draftRegions.splice(i, 1);
+            renderZoneList();
+            drawZones();
+            return;
+        }
+        const rest = savedRegions.filter((_, j) => j !== i)
+            .map(r => ({ id: r.id, name: r.name, points: r.points.map(toPair) }));
+        fetch('/zones', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ regions: rest })
+        }).then(r => r.json()).then(d => {
+            savedRegions = (d.regions || rest).map(r => ({
+                id: r.id, name: r.name, points: (r.points || []).map(toPoint)
+            }));
+            renderZoneList();
+            drawZones();
+            showToast('已删除该区域');
+        }).catch(() => showToast('删除失败，服务不可用'));
+    }
+
+    function toggleZoneEdit() {
+        // 已进入编辑则允许随时退出；回放中禁止进入编辑（叠加层已隐藏，坐标会误导）
+        if (!zoneEditing && playback.active) {
+            showToast('回放中，请先“返回 LIVE”再编辑区域');
+            return;
+        }
+        zoneEditing = !zoneEditing;
+        if (zoneEditing) {
+            // 以服务端区域为草稿起点，可继续增删后整体保存
+            draftRegions = savedRegions.map(r => ({
+                name: r.name, points: r.points.map(p => ({ x: p.x, y: p.y }))
+            }));
+            draftPoints = [];
+        } else {
+            draftPoints = [];   // 退出时丢弃未闭合的多边形，服务端区域不变
+        }
+        mouseNorm = null;
+        zoneCanvas.classList.toggle('editing', zoneEditing);
+        document.getElementById('btnZoneEdit').textContent = zoneEditing ? '结束编辑' : '编辑区域';
+        document.getElementById('zoneHint').textContent = zoneEditing
+            ? '单击加顶点 · 双击闭合 · 可画多个区域'
+            : '在画面上绘制警戒区域';
+        renderZoneList();
+        drawZones();
+    }
+
+    // 闭合当前多边形：先去除双击带来的重复尾点，再要求至少 3 个顶点
+    function closeCurrentPolygon() {
+        while (draftPoints.length >= 2) {
+            const a = draftPoints[draftPoints.length - 1];
+            const b = draftPoints[draftPoints.length - 2];
+            if (Math.hypot(a.x - b.x, a.y - b.y) < 0.005) draftPoints.pop();
+            else break;
+        }
+        if (draftPoints.length < 3) {
+            showToast(draftPoints.length ? '至少需要 3 个顶点才能闭合区域' : '当前没有正在绘制的区域');
+            return;
+        }
+        draftRegions.push({ name: '', points: draftPoints });
+        draftPoints = [];
+        renderZoneList();
+        drawZones();
+    }
+
+    function saveZones() {
+        if (playback.active) { showToast('回放中，请先“返回 LIVE”'); return; }
+        if (draftPoints.length) {
+            showToast('请先闭合或结束正在绘制的区域');
+            return;
+        }
+        const regions = (zoneEditing ? draftRegions : savedRegions).map((r, i) => ({
+            id: r.id || ('z' + (i + 1)),
+            name: r.name || ('区域 ' + (i + 1)),
+            points: r.points.map(toPair)
+        }));
+        fetch('/zones', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ regions })
+        }).then(r => r.json().then(d => ({ ok: r.ok, d }))).then(({ ok, d }) => {
+            if (!ok) {
+                showToast((d && d.error) || '区域格式非法，保存失败');
+                return;
+            }
+            savedRegions = (d.regions || regions).map(r => ({
+                id: r.id, name: r.name, points: (r.points || []).map(toPoint)
+            }));
+            if (zoneEditing) {
+                draftRegions = savedRegions.map(r => ({
+                    name: r.name, points: r.points.map(p => ({ x: p.x, y: p.y }))
+                }));
+            }
+            showToast('已保存 ' + savedRegions.length + ' 个警戒区域');
+            renderZoneList();
+            drawZones();
+        }).catch(() => showToast('保存失败，服务不可用'));
+    }
+
+    function clearAllZones() {
+        if (!savedRegions.length && !draftRegions.length && !draftPoints.length) {
+            showToast('当前没有区域可清除');
+            return;
+        }
+        if (!confirm('确定清除全部警戒区域？')) return;
+        fetch('/zones', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ regions: [] })
+        }).then(r => r.json()).then(() => {
+            savedRegions = [];
+            draftRegions = [];
+            draftPoints = [];
+            renderZoneList();
+            drawZones();
+            showToast('已清除全部区域');
+        }).catch(() => showToast('清除失败，服务不可用'));
+    }
+
+    // 编辑交互：单击加顶点 / 双击闭合 / 鼠标移动预览 / 离开画布收线
+    zoneCanvas.addEventListener('click', e => {
+        if (!zoneEditing) return;
+        const box = zoneCanvas.getBoundingClientRect();
+        const norm = clickToNorm(e.clientX - box.left, e.clientY - box.top, currentContentRect());
+        if (!norm) { showToast('请点击画面内容区域（黑边外无效）'); return; }
+        draftPoints.push(norm);
+        drawZones();
+    });
+
+    zoneCanvas.addEventListener('dblclick', e => {
+        e.preventDefault();
+        if (zoneEditing) closeCurrentPolygon();
+    });
+
+    zoneCanvas.addEventListener('mousemove', e => {
+        if (!zoneEditing || !draftPoints.length) return;
+        const box = zoneCanvas.getBoundingClientRect();
+        mouseNorm = clickToNorm(e.clientX - box.left, e.clientY - box.top, currentContentRect());
+        drawZones();
+    });
+
+    zoneCanvas.addEventListener('mouseleave', () => {
+        if (mouseNorm) { mouseNorm = null; drawZones(); }
+    });
+
+    document.getElementById('btnZoneEdit').addEventListener('click', toggleZoneEdit);
+    document.getElementById('btnZoneSave').addEventListener('click', saveZones);
+    document.getElementById('btnZoneClose').addEventListener('click', closeCurrentPolygon);
+    document.getElementById('btnZoneClear').addEventListener('click', clearAllZones);
+
+    // ============================================================
+    // 前端报警音（Web Audio 振荡器合成，无需音频文件）
+    // ============================================================
+    let audioCtx = null;
+    let audioEnabled = false;   // 未解锁前不发声，仅视觉提示生效
+
+    // 用户手势解锁：浏览器自动播放策略要求 AudioContext 在交互中创建/恢复
+    function unlockAlarmAudio() {
+        try {
+            const AC = window.AudioContext || window.webkitAudioContext;
+            if (!AC) { showToast('当前浏览器不支持报警音'); return; }
+            if (!audioCtx) audioCtx = new AC();
+            audioCtx.resume().then(() => {
+                audioEnabled = true;
+                const btn = document.getElementById('btnAudio');
+                btn.textContent = '🔔 报警音已开启';
+                btn.classList.add('on');
+            }).catch(() => showToast('报警音启用失败'));
+        } catch (e) { showToast('当前浏览器不支持报警音'); }
+    }
+
+    // 警笛：方波载波 780Hz + 1.6Hz 正弦 LFO 扫频 ±260Hz，持续 seconds 秒，首尾淡入淡出
+    function playSiren(seconds) {
+        if (!audioEnabled || !audioCtx || audioCtx.state !== 'running') return;
+        const t0 = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        const lfo = audioCtx.createOscillator();
+        const lfoGain = audioCtx.createGain();
+        osc.type = 'square';
+        osc.frequency.value = 780;
+        lfo.type = 'sine';
+        lfo.frequency.value = 1.6;       // 每秒约 1.6 次来回，模拟警笛扫频
+        lfoGain.gain.value = 260;        // 扫频范围约 520~1040Hz
+        lfo.connect(lfoGain);
+        lfoGain.connect(osc.frequency);
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.18, t0 + 0.05);
+        gain.gain.setValueAtTime(0.18, t0 + Math.max(seconds - 0.3, 0.1));
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + seconds);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(t0);
+        lfo.start(t0);
+        osc.stop(t0 + seconds);
+        lfo.stop(t0 + seconds);
+    }
+
+    document.getElementById('btnAudio').addEventListener('click', unlockAlarmAudio);
+
+    // ============================================================
+    // 事件轮询（1s）：新事件 → 横幅闪烁 + 列表置顶 + 报警音 10 秒
+    // ============================================================
+    let lastEventId = null;     // 首轮拉取只同步基线，不触发报警，避免页面加载误报
+    let eventItems = [];
+    let bannerTimer = null;
+
+    function fmtEventTime(ev) {
+        if (ev.iso) return ev.iso.replace('T', ' ').slice(11, 19);
+        if (ev.ts) return new Date(ev.ts * 1000).toLocaleTimeString('zh-CN', { hour12: false });
+        return '';
+    }
+
+    function renderEventList(items, freshIds) {
+        const el = document.getElementById('eventList');
+        if (!items.length) {
+            el.innerHTML = '<div class="empty-state" style="padding: 20px;"><p>暂无入侵事件</p></div>';
+            return;
+        }
+        el.innerHTML = items.map(ev => `
+            <div class="event-item${freshIds && freshIds.has(ev.id) ? ' new' : ''}">
+                <div class="event-dot"></div>
+                <div class="det-info">
+                    <div class="det-class" style="font-size: 13px;">${escapeHtml(ev.zone_name || '警戒区域')} · ${toCn(ev.class || '目标')}</div>
+                    <div class="det-bbox">轨迹 #${ev.track_id != null ? ev.track_id : '--'} · 置信度 ${ev.confidence != null ? (ev.confidence * 100).toFixed(0) + '%' : '--'}</div>
+                </div>
+                <span class="zone-meta">${fmtEventTime(ev)}</span>
+            </div>`).join('');
+    }
+
+    function showAlarmBanner(ev) {
+        document.getElementById('alarmBannerText').textContent =
+            '区域入侵：' + (ev.zone_name || '警戒区域') + ' 检测到 ' + toCn(ev.class || '目标');
+        const el = document.getElementById('alarmBanner');
+        el.classList.add('show');
+        clearTimeout(bannerTimer);
+        bannerTimer = setTimeout(() => el.classList.remove('show'), 10000);
+    }
+
+    async function fetchEvents() {
+        try {
+            const res = await fetch('/events');
+            const data = await res.json();
+            const events = data.events || [];
+            if (lastEventId === null) {
+                // 首轮：仅建立基线与历史列表，不触发横幅/报警音
+                lastEventId = data.latest_id != null
+                    ? data.latest_id
+                    : (events.length ? events[events.length - 1].id : 0);
+                eventItems = events.slice(-20).reverse();
+                renderEventList(eventItems);
+                return;
+            }
+            const fresh = events.filter(ev => ev.id > lastEventId);
+            if (!fresh.length) return;
+            lastEventId = data.latest_id != null
+                ? data.latest_id
+                : fresh[fresh.length - 1].id;
+            const freshIds = new Set(fresh.map(ev => ev.id));
+            eventItems = fresh.slice().reverse().concat(eventItems).slice(0, 20);
+            renderEventList(eventItems, freshIds);
+            showAlarmBanner(fresh[fresh.length - 1]);
+            playSiren(10);
+        } catch (e) { /* 静默失败，保持轮询 */ }
+    }
+
+    document.getElementById('btnAlertTest').addEventListener('click', () => {
+        fetch('/alert/test', { method: 'POST' })
+            .then(() => showToast('已触发测试报警，请稍候查看事件'))
+            .catch(() => showToast('触发失败，服务不可用'));
+    });
+
+    // ============================================================
+    // 录像回放：片段列表 / 倍速 / 返回 LIVE / 叠加层隐藏联动
+    // ============================================================
+    function fmtDuration(s) {
+        s = Math.round(s || 0);
+        return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    }
+
+    function fmtClipTime(ts) {
+        // 健壮性双保险：若收到字符串（旧版后端/其他调用方的 "YYYYmmdd_HHMMSS"），
+        // 直接按格式重组显示，不再走 Unix 秒换算（避免 Invalid Date）
+        if (typeof ts === 'string') {
+            const m = ts.match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/);
+            if (m) return `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}:${m[6]}`;
+            return ts;
+        }
+        const d = new Date(ts * 1000);
+        if (isNaN(d.getTime())) return '--';
+        return d.toLocaleString('zh-CN', {
+            hour12: false, month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+    }
+
+    function renderClipList(clips) {
+        const el = document.getElementById('clipList');
+        if (!clips.length) {
+            el.innerHTML = '<div class="empty-state" style="padding: 20px;"><p>暂无录像片段</p></div>';
+            return;
+        }
+        el.innerHTML = clips.map(c => {
+            const active = playback.active && playback.clip === c.file;
+            return `
+                <div class="clip-item${active ? ' active' : ''}">
+                    <div class="det-info">
+                        <div class="det-class" style="font-size: 13px;">${fmtClipTime(c.start_ts)}</div>
+                        <div class="det-bbox">时长 ${fmtDuration(c.duration_s)} · ${c.size_mb} MB</div>
+                    </div>
+                    <button class="rot-chip clip-play${active ? ' active' : ''}" data-file="${encodeURIComponent(c.file)}">${active ? '播放中' : '播放'}</button>
+                </div>`;
+        }).join('');
+        el.querySelectorAll('.clip-play').forEach(btn => {
+            btn.addEventListener('click', () => playClip(decodeURIComponent(btn.dataset.file)));
+        });
+    }
+
+    function applyPlaySource() {
+        // 与 /video_feed 同 mimetype 的 multipart MJPEG，直接切 img.src 即可
+        videoFeedEl.src = '/recordings/stream?clip=' + encodeURIComponent(playback.clip)
+            + '&speed=' + playback.speed;
+    }
+
+    function updatePlaybackUI() {
+        document.getElementById('liveBadge').style.display = playback.active ? 'none' : 'flex';
+        document.getElementById('playBadge').style.display = playback.active ? 'flex' : 'none';
+        if (playback.active) document.getElementById('recBadge').style.display = 'none';
+        document.querySelectorAll('.speed-chip').forEach(c =>
+            c.classList.toggle('active', parseFloat(c.dataset.speed) === playback.speed));
+        if (playback.active && zoneEditing) toggleZoneEdit();   // 退出区域编辑，隐藏叠加层
+        renderClipList(lastClips);
+    }
+
+    function playClip(file) {
+        playback.active = true;
+        playback.clip = file;
+        applyPlaySource();
+        updatePlaybackUI();
+        drawZones();   // 回放期间清空叠加层绘制，避免旧区域误导
+        showToast('回放中 · ' + playback.speed + '×');
+    }
+
+    function setPlaySpeed(s) {
+        playback.speed = s;
+        if (playback.active) applyPlaySource();
+        updatePlaybackUI();
+    }
+
+    function backToLive() {
+        if (!playback.active) return;
+        playback.active = false;
+        playback.clip = null;
+        videoFeedEl.src = '/video_feed';
+        updatePlaybackUI();
+        drawZones();
+        showToast('已返回实时画面');
+    }
+
+    document.querySelectorAll('.speed-chip').forEach(btn => {
+        btn.addEventListener('click', () => setPlaySpeed(parseFloat(btn.dataset.speed)));
+    });
+    document.getElementById('btnBackLive').addEventListener('click', backToLive);
+
+    // ============================================================
+    // 录制状态 / 片段列表（低频 5s 轮询）：REC 徽标 + 回放列表数据源
+    // ============================================================
+    function updateRecBadge(st) {
+        const el = document.getElementById('recBadge');
+        if (!st.enabled || playback.active) { el.style.display = 'none'; return; }
+        el.style.display = 'flex';
+        if (st.stopped_reason) {
+            // 录制已停（磁盘不足/编码器不可用等）：徽标变灰并显示停录原因摘要，
+            // 不再显示红点误导用户以为仍在录制（红点由 CSS .rec-dot 提供，置灰整体即可）
+            el.style.filter = 'grayscale(1)';
+            el.style.opacity = '0.75';
+            document.getElementById('recInfo').textContent = '已停止：' + st.stopped_reason;
+        } else {
+            el.style.filter = '';
+            el.style.opacity = '';
+            document.getElementById('recInfo').textContent =
+                'REC · ' + st.segment_count + ' 段 · ' + st.total_size_mb + ' MB';
+        }
+    }
+
+    async function fetchRecording() {
+        try {
+            const [stRes, clipRes] = await Promise.all([
+                fetch('/recordings/status'), fetch('/recordings/clips')
+            ]);
+            const st = await stRes.json();
+            const cd = await clipRes.json();
+            updateRecBadge(st);
+            lastClips = cd.clips || [];
+            renderClipList(lastClips);
+        } catch (e) { /* 静默失败 */ }
+    }
+
+    // ============================================================
     // 启动（链式调度：上一轮请求完成后才安排下一轮，
     // 避免慢响应时旧请求晚到覆盖新数据 / 请求堆积乱序）
     // ============================================================
@@ -1094,9 +1952,20 @@
     }
 
     fetchModelInfo();
+    fetchZones();
+    fetchRecording();
+    renderZoneList();
+    renderEventList([]);
+    renderClipList([]);
     pollLoop(refreshSource, 1000);
     pollLoop(fetchMetrics, 1000);
     pollLoop(fetchDetections, 200);
+    pollLoop(fetchEvents, 1000);
+    pollLoop(fetchRecording, 5000);
+
+    // 容器尺寸变化或新帧解码（naturalWidth 更新）后重绘区域叠加层（带 dpr 重适配）
+    window.addEventListener('resize', drawZones);
+    videoFeedEl.addEventListener('load', drawZones);
 </script>
 
 </body>

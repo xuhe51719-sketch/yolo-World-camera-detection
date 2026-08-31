@@ -16,6 +16,7 @@ import numpy as np
 from flask import Response, jsonify, render_template, request
 
 import state
+import zones
 from config import settings
 from detector import get_model
 from metrics import metrics, metrics_lock
@@ -149,6 +150,7 @@ def register_routes(app):
         """调整画面方向：rotate 取 0/90/180/270（顺时针），mirror 取 ""/"h"/"v"
         即时生效，无需重连"""
         data = request.get_json(silent=True) or {}
+        before = dict(state.phone_orientation)   # 改前快照：仅方向真变化才清空区域
         if 'rotate' in data:
             try:
                 rot = int(data['rotate'])
@@ -163,7 +165,15 @@ def register_routes(app):
         logger.info("画面方向已更新: 旋转%s° 镜像=%s",
                     state.phone_orientation['rotate'],
                     state.phone_orientation['mirror'] or '无')
-        return jsonify({"ok": True, "orientation": state.phone_orientation})
+        # 旋转/镜像后旧警戒区域的坐标语义失效，清空以免误报（前端引导用户重画）；
+        # 方向未变（同值重设 / 非法参数被忽略）时不清空，避免毁掉用户区域配置
+        regions_cleared = False
+        if (state.phone_orientation["rotate"] != before["rotate"]
+                or state.phone_orientation["mirror"] != before["mirror"]):
+            zones.clear_zones()
+            regions_cleared = True
+        return jsonify({"ok": True, "orientation": state.phone_orientation,
+                        "regions_cleared": regions_cleared})
 
     @app.route('/health')
     def health():

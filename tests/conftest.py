@@ -42,11 +42,35 @@ def _forbid_real_model(monkeypatch):
 
 
 # ------------------------------------------------------------
-# 共享状态隔离：用例对 state 的修改在结束后还原
+# 共享状态隔离：用例对 state 的修改在结束后还原；
+# 同时覆盖新模块（zones / tracks / recorder）的模块级状态与
+# zones.json 持久化文件，保证用例间完全不串。
 # ------------------------------------------------------------
+def _drain_recorder_queue():
+    """排空录制帧队列（用例可能残留入队帧）"""
+    import queue as _queue
+
+    import recorder
+    while True:
+        try:
+            recorder.frame_queue.get_nowait()
+        except _queue.Empty:
+            return
+
+
 @pytest.fixture(autouse=True)
 def _isolate_state():
+    import recorder
     import state
+    import tracks
+    import zones
+    from config import settings
+
+    # zones.json 备份（/set_orientation 与 POST /zones 会真实写盘）
+    zones_file_backup = None
+    if os.path.isfile(settings.zones_file):
+        with open(settings.zones_file, "rb") as f:
+            zones_file_backup = f.read()
 
     snapshot = {
         "phone_orientation": dict(state.phone_orientation),
@@ -56,7 +80,21 @@ def _isolate_state():
         "camera_connected": state.camera_connected,
         "frame_mean": state.frame_mean,
         "black_warning": state.black_warning,
+        # --- 新模块状态 ---
+        "events": list(state.events),
+        "display_size": state.display_size,
+        "zones_list": zones.get_zones(),
+        "zones_inside": dict(zones._inside),
+        "zones_last_alert": dict(zones._last_alert),
+        "zones_alarm_active": zones._alarm_active,
+        "tracks_points": {k: list(v) for k, v in tracks._store.points.items()},
+        "tracks_last_seen": dict(tracks._store.last_seen),
+        "recorder_active": recorder.recorder_active,
+        "stopped_reason": recorder.stopped_reason,
+        "active_segment_name": recorder._active_segment_name,
+        "duration_cache": dict(recorder._duration_cache),
     }
+    _drain_recorder_queue()
     yield
     state.phone_orientation.update(snapshot["phone_orientation"])
     state.phone_url_override = snapshot["phone_url_override"]
@@ -66,6 +104,43 @@ def _isolate_state():
     state.camera_connected = snapshot["camera_connected"]
     state.frame_mean = snapshot["frame_mean"]
     state.black_warning = snapshot["black_warning"]
+    # --- 新模块状态还原 ---
+    with state.events_lock:
+        state.events.clear()
+        state.events.extend(snapshot["events"])
+    state.display_size = snapshot["display_size"]
+    with zones._zones_lock:
+        zones._zones = snapshot["zones_list"]
+    with zones._inside_lock:
+        zones._inside.clear()
+        zones._inside.update(snapshot["zones_inside"])
+    with zones._last_alert_lock:
+        zones._last_alert.clear()
+        zones._last_alert.update(snapshot["zones_last_alert"])
+    zones._alarm_active = snapshot["zones_alarm_active"]
+    with tracks._store.lock:
+        tracks._store.points.clear()
+        tracks._store.last_seen.clear()
+        tracks._store.last_seen.update(snapshot["tracks_last_seen"])
+        for tid, pts in snapshot["tracks_points"].items():
+            from collections import deque
+            tracks._store.points[tid] = deque(
+                pts, maxlen=max(1, settings.trail_max_points))
+    recorder.recorder_active = snapshot["recorder_active"]
+    recorder.stopped_reason = snapshot["stopped_reason"]
+    recorder._active_segment_name = snapshot["active_segment_name"]
+    recorder._duration_cache.clear()
+    recorder._duration_cache.update(snapshot["duration_cache"])
+    _drain_recorder_queue()
+    # zones.json 还原（被用例写过的话）
+    try:
+        if zones_file_backup is not None:
+            with open(settings.zones_file, "wb") as f:
+                f.write(zones_file_backup)
+        elif os.path.isfile(settings.zones_file):
+            os.remove(settings.zones_file)
+    except OSError:
+        pass
 
 
 # ------------------------------------------------------------

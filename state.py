@@ -11,6 +11,7 @@ camera_info 采用"原子替换 + 拷贝读取"策略（修复跨线程竞争）
 
 import threading
 import time
+from collections import deque
 
 from config import settings
 
@@ -62,3 +63,13 @@ last_nonblack_time = time.time() # 最近一次出现非黑帧的时间
 
 # 画面方向（运行时可调）：旋转 0/90/180/270（顺时针），镜像 ""/"h"/"v"
 phone_orientation = {"rotate": settings.phone_rotate, "mirror": settings.phone_mirror}
+
+# ============================================================
+# 入侵报警事件（zones.py 写入，/events 读取）
+# ============================================================
+events = deque(maxlen=200)       # 事件环形缓冲：只保留最近 200 条
+events_lock = threading.Lock()
+
+# 方向校正后的画面尺寸 (宽, 高)：zones.py 将归一化区域坐标转像素用；
+# 尚无帧时为 (0, 0)，此时区域检查跳过（无法换算坐标）
+display_size = (0, 0)

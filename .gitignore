@@ -16,9 +16,17 @@ cam_test/
 video_feed_sample.bin
 benchmark_results.csv
 _front_check.js
+# 精度评估时为对齐类别下标而生成的临时数据集（图像拷贝 + 重写标注 + 绝对路径 yaml）
+.eval_cache/
 
 # ===== 滚动录制段与用户画的区域（运行时产物，不入库）=====
 recordings/
 zones.json
 
-# 注：dataset/（含已采集帧与 data.yaml）需要入库，不忽略
+# ===== 可从 Roboflow 重下载的中间导出（不入库；datasets/ 黄金集入库）=====
+person-50/
+vehicle-50/
+*.yolov8.zip
+
+# 注：dataset/ 与 datasets/（黄金数据集与 data.yaml）需要入库，不忽略
+# 注：evaluation_report.csv 是多次精度实验的对比台账，需要入库

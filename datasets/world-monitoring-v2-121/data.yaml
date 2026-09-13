@@ -1,0 +1,6 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 14
+names: ['bottle', 'bus', 'car', 'chair', 'dog', 'door', 'fridge', 'motorbike', 'sofa', 'table', 'trash can', 'truck', 'water dispenser', 'person']

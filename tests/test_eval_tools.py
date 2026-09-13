@@ -69,14 +69,16 @@ class TestLoadYamlNamesFlowList:
     """Roboflow 导出的 data.yaml 用 names: ['a', 'b'] 行内列表写法"""
 
     def test_real_roboflow_dataset_yaml(self):
+        # 黄金集已经 tools/unify_class_ids.py 统一到 DETECTION_CLASSES 下标（124 类映射式）
         path = os.path.join(BASE_DIR, "datasets", "world-monitoring-v2-121", "data.yaml")
         if not os.path.exists(path):
             pytest.skip("Roboflow 导出数据集不在本地")
         names = eval_dataset.load_yaml_names(path)
-        assert len(names) == 17
-        assert names[0] == "YOLO-World-Monitoring-System"
-        assert names[4] == "car"
-        assert names[-1] == "well lid"
+        assert len(names) == 124
+        assert names[0] == "person"
+        assert names[2] == "car"
+        assert names[3] == "motorcycle"
+        assert names[5] == "bus"
 
     def test_quoted_flow_list(self, tmp_path):
         content = "nc: 3\nnames: ['bottle', 'trash can', 'water dispenser']\n"

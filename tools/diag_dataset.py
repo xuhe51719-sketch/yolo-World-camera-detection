@@ -9,7 +9,7 @@ mAP 偏低时，先区分是「模型不行」还是「数据集不行」——�
 
 用法（在项目根目录运行）：
     ".venv\\Scripts\\python.exe" tools\\diag_dataset.py
-    ".venv\\Scripts\\python.exe" tools\\diag_dataset.py --data datasets\\world-monitoring-v2-121\\data.yaml
+    ".venv\\Scripts\\python.exe" tools\\diag_dataset.py --data datasets\\world-monitoring-v4-121\\data.yaml
 """
 import os
 import sys
@@ -46,7 +46,7 @@ def main():
     parser = argparse.ArgumentParser(description="黄金数据集体检")
     parser.add_argument("--data",
                         default=os.path.join(BASE_DIR, "datasets",
-                                             "world-monitoring-v2-121", "data.yaml"))
+                                             "world-monitoring-v4-121", "data.yaml"))
     args = parser.parse_args()
 
     if not os.path.exists(args.data):

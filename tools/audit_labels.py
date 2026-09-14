@@ -129,7 +129,7 @@ def main():
     parser = argparse.ArgumentParser(description="标签逐框审计")
     parser.add_argument("--data",
                         default=os.path.join(BASE_DIR, "datasets",
-                                             "world-monitoring-v2-121", "data.yaml"))
+                                             "world-monitoring-v4-121", "data.yaml"))
     parser.add_argument("--audit-class", default="bus", help="要审计的数据集类别名")
     parser.add_argument("--min-conf", type=float, default=0.15, help="裁剪取证的置信度下限")
     parser.add_argument("--iou", type=float, default=0.5, help="全图取证的 IoU 门槛")

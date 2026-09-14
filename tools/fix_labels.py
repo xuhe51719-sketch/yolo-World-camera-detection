@@ -41,7 +41,7 @@ def main():
     parser = argparse.ArgumentParser(description="按审计白名单定向修复标签")
     parser.add_argument("--data",
                         default=os.path.join(BASE_DIR, "datasets",
-                                             "world-monitoring-v2-121", "data.yaml"))
+                                             "world-monitoring-v4-121", "data.yaml"))
     parser.add_argument("--audit",
                         default=os.path.join(BASE_DIR, ".eval_cache", "bus_audit", "audit.csv"))
     parser.add_argument("--from", dest="src", default="bus", help="被审计的源类别名")

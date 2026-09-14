@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
 """
+[历史脚本 / 已归档] 本脚本作用于旧黄金集 world-monitoring-v2-121（拉伸几何），该集已被
+world-monitoring-v4-121 取代并删除；v4 的下标统一已并入 tools/apply_v4_cleanup.py
+（占位类 '1'/'2'/'3' 重映射 + canonical 124 一步到位）。保留本文件仅为复现 v2 迁移过程，
+V2 路径常量已失效属预期。
+
 统一黄金数据集类别下标：把 datasets/world-monitoring-v2-121 的紧凑类别表
 重映射到全项目权威下标 config_classes.DETECTION_CLASSES（与 dataset/data.yaml 同序）。
 

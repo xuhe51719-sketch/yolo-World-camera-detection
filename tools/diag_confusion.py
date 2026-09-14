@@ -58,7 +58,7 @@ def main():
     parser = argparse.ArgumentParser(description="GT 类别 vs 模型识别结果 混淆诊断")
     parser.add_argument("--data",
                         default=os.path.join(BASE_DIR, "datasets",
-                                             "world-monitoring-v2-121", "data.yaml"))
+                                             "world-monitoring-v4-121", "data.yaml"))
     parser.add_argument("--model", default=os.path.join(BASE_DIR, "yolov8x-worldv2.pt"))
     parser.add_argument("--vocab", choices=["dataset", "project", "model"], default="dataset")
     parser.add_argument("--split", choices=["all", "train", "valid", "test"], default="all")

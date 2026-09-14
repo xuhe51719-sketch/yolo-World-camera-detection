@@ -13,15 +13,15 @@ import eval_dataset
 from config import BASE_DIR
 
 
-def _write(tmp_path, content):
-    p = tmp_path / "data.yaml"
-    p.write_text(content, encoding="utf-8")
-    return str(p)
+def _write(tmp_path, content):# 写入临时文件并返回路径
+    p = tmp_path / "data.yaml"# 临时文件路径
+    p.write_text(content, encoding="utf-8")# 写入内容
+    return str(p)# 返回路径
 
 
-class TestLoadYamlNames:
+class TestLoadYamlNames:# 测试 YAML 解析
     def test_real_dataset_yaml(self):
-        """解析项目内真实 data.yaml：124 个类别，首尾类别可验证"""
+        """解析项目内真实 data.yaml：124 个类别，首尾类别可验证"""# 测试项目内真实数据集 YAML 解析
         path = os.path.join(BASE_DIR, "dataset", "data.yaml")
         names = eval_dataset.load_yaml_names(path)
         assert len(names) == 124
@@ -36,13 +36,13 @@ class TestLoadYamlNames:
             == ["cup", "bottle", "phone"]
 
     def test_names_with_colon_and_spaces_in_value(self, tmp_path):
-        """值中含空格应被 strip；解析按第一个冒号切分"""
+        """值中含空格应被 strip；解析按第一个冒号切分"""# 测试值中含空格的 YAML 解析
         content = "names:\n  0:   dining table  \n  1: traffic light\n"
         assert eval_dataset.load_yaml_names(_write(tmp_path, content)) \
             == ["dining table", "traffic light"]
 
     def test_stops_at_first_non_numeric_entry(self, tmp_path):
-        """names 段遇到非 '数字: 值' 的有效行即停止解析"""
+        """names 段遇到非 '数字: 值' 的有效行即停止解析"""# 测试 names 段停止解析的 YAML 解析
         content = "names:\n  0: cup\n  1: pen\ntrain: images\n  9: ghost\n"
         assert eval_dataset.load_yaml_names(_write(tmp_path, content)) == ["cup", "pen"]
 
@@ -69,8 +69,8 @@ class TestLoadYamlNamesFlowList:
     """Roboflow 导出的 data.yaml 用 names: ['a', 'b'] 行内列表写法"""
 
     def test_real_roboflow_dataset_yaml(self):
-        # 黄金集已经 tools/unify_class_ids.py 统一到 DETECTION_CLASSES 下标（124 类映射式）
-        path = os.path.join(BASE_DIR, "datasets", "world-monitoring-v2-121", "data.yaml")
+        # 黄金集已经 tools/apply_v4_cleanup.py 统一到 DETECTION_CLASSES 下标（124 类映射式）
+        path = os.path.join(BASE_DIR, "datasets", "world-monitoring-v4-121", "data.yaml")
         if not os.path.exists(path):
             pytest.skip("Roboflow 导出数据集不在本地")
         names = eval_dataset.load_yaml_names(path)

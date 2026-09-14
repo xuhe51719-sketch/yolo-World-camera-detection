@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
 """
+[历史脚本 / 已归档] 本脚本作用于旧黄金集 world-monitoring-v2-121（拉伸几何），该集已被
+1280 fit-within 的 world-monitoring-v4-121 取代并删除；v2 原始标注备份见
+.eval_cache/v2_pre_bigfix_backup，清洗后状态见 git 历史；v4 的等价清洗脚本为
+tools/apply_v4_cleanup.py。保留本文件仅为复现 v2 迁移过程，V2 路径常量已失效属预期。
+
 黄金数据集大改：在 datasets/world-monitoring-v2-121 上一次性完成
   1) bus→person 定向改名（118 审计确证 + 3 机器误判 + 8 存疑判人 = 129）；
   2) 删除 3 个不可读框；

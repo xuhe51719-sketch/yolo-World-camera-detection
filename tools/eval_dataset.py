@@ -5,7 +5,7 @@
 
 支持两种数据布局：
     1. 扁平式（dataset/：images/ + labels/ + data.yaml，names 为 "0: person" 映射式）
-    2. split 式（datasets/world-monitoring-v2-121/：train|valid|test 各带 images/ labels/，
+    2. split 式（datasets/world-monitoring-v4-121/：train|valid|test 各带 images/ labels/，
        names 为 ['a', 'b'] 列表式，且 data.yaml 里是 ../train/images 这类相对路径）
 
 三种词汇表口径（--vocab）：
@@ -241,7 +241,7 @@ def main():
     parser = argparse.ArgumentParser(description="黄金数据集 mAP 评估")
     parser.add_argument("--data",
                         default=os.path.join(BASE_DIR, "datasets",
-                                             "world-monitoring-v2-121", "data.yaml"))
+                                             "world-monitoring-v4-121", "data.yaml"))
     parser.add_argument("--model", default=os.path.join(BASE_DIR, "yolov8x-worldv2.pt"))
     parser.add_argument("--vocab", choices=["dataset", "project", "model"], default="dataset",
                         help="评估用的类别词汇表口径")

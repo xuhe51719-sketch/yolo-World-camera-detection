@@ -3,13 +3,14 @@
 Flask 路由：对外行为契约保持不变 ——
 8 个路由（/、/video_feed、/detections、/model_info、/source、/metrics、
 /set_orientation、/set_source）的 URL、HTTP 方法、返回 JSON 字段名均与原实现一致；
-另新增轻量 /health 看门狗端点（不影响既有契约）。
+另新增轻量 /health 看门狗端点与 /set_model 模型热切换端点（不影响既有契约）。
 """
 
 import logging
 import os
 import re
 import time
+import traceback
 import urllib.parse
 
 import numpy as np
@@ -18,7 +19,7 @@ from flask import Response, jsonify, render_template, request
 import state
 import zones
 from config import settings
-from detector import get_model
+from detector import get_model, list_available_models, switch_model
 from metrics import metrics, metrics_lock
 
 logger = logging.getLogger(__name__)
@@ -90,7 +91,9 @@ def register_routes(app):
             "total_classes": len(model.names),
             "class_names": model.names,
             "camera": state.get_camera_info(),
-            "device": device
+            "device": device,
+            # 可切换模型列表（前端下拉框数据源；扫描项目根目录 *.pt）
+            "available_models": list_available_models(),
         })
 
     @app.route('/source')
@@ -204,6 +207,29 @@ def register_routes(app):
         state.phone_url_override = url
         state.force_reconnect = True
         return jsonify({"ok": True, "url": url})
+
+    @app.route('/set_model', methods=['POST'])
+    def set_model():
+        """运行时热切换检测模型：提交项目根目录下的 .pt 文件名。
+        白名单校验失败（非法名/路径穿越）返回 400；加载失败（权重损坏）返回 500。
+        两种情况旧模型都继续服务，画面不中断。"""
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            data = {}
+        raw = data.get('model')
+        name = raw.strip() if isinstance(raw, str) else ''
+        if not name:
+            return jsonify({"ok": False,
+                            "error": "缺少 model 字段（应为项目根目录下的 .pt 文件名）"}), 400
+        try:
+            info = switch_model(name)
+        except ValueError as e:      # 白名单校验失败：客户端输入非法
+            logger.warning("模型切换被拒绝: %r -> %s", name, e)
+            return jsonify({"ok": False, "error": str(e)}), 400
+        except Exception as e:       # 加载失败：旧模型保留，属服务端错误
+            logger.error("模型加载失败: %r\n%s", name, traceback.format_exc())
+            return jsonify({"ok": False, "error": f"模型加载失败：{e}"}), 500
+        return jsonify({"ok": True, **info})
 
 
 def normalize_and_validate(raw):

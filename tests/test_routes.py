@@ -138,6 +138,14 @@ class TestModelInfo:
         with pytest.raises(RuntimeError, match="禁止真实加载"):
             client.get("/model_info")
 
+    def test_model_info_includes_available_models(self, client, monkeypatch):
+        """/model_info 携带可切换模型列表（前端下拉框数据源）"""
+        fake_list = [{"name": "yolov8n.pt", "is_world": False, "active": False},
+                     {"name": "yolov8x-worldv2.pt", "is_world": True, "active": True}]
+        monkeypatch.setattr(routes, "list_available_models", lambda *a, **k: fake_list)
+        data = client.get("/model_info").get_json()
+        assert data["available_models"] == fake_list
+
 
 # ============================================================
 # /source
@@ -355,3 +363,70 @@ class TestSetSource:
         resp = client.post("/set_source", json={"url": "ftp://1.2.3.4"})
         assert resp.status_code == 400
         assert state.phone_url_override == "http://10.0.0.9:8080/video"
+
+
+# ============================================================
+# /set_model：切换模型（switch_model 在 routes 命名空间被打桩，绝不真加载）
+# ============================================================
+class TestSetModel:
+    def test_set_model_success(self, client, monkeypatch):
+        calls = {}
+
+        def fake_switch(name):
+            calls["name"] = name
+            return {"model": name, "open_vocab": False}
+        monkeypatch.setattr(routes, "switch_model", fake_switch)
+        resp = client.post("/set_model", json={"model": "yolov8n.pt"})
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["ok"] is True
+        assert data["model"] == "yolov8n.pt"
+        assert data["open_vocab"] is False
+        assert calls["name"] == "yolov8n.pt"
+
+    def test_set_model_invalid_name_returns_400(self, client, monkeypatch):
+        def fake_switch(name):
+            raise ValueError("模型 'evil.pt' 不在可用列表中")
+        monkeypatch.setattr(routes, "switch_model", fake_switch)
+        resp = client.post("/set_model", json={"model": "evil.pt"})
+        assert resp.status_code == 400
+        data = resp.get_json()
+        assert data["ok"] is False
+        assert "error" in data
+
+    def test_set_model_load_failure_returns_500(self, client, monkeypatch):
+        """白名单合法但加载失败（权重损坏）：500，旧模型保留"""
+        def fake_switch(name):
+            raise RuntimeError("权重损坏")
+        monkeypatch.setattr(routes, "switch_model", fake_switch)
+        resp = client.post("/set_model", json={"model": "yolov8m.pt"})
+        assert resp.status_code == 500
+        assert resp.get_json()["ok"] is False
+
+    def test_set_model_missing_field_returns_400_without_switching(
+            self, client, monkeypatch):
+        """缺 model 字段：路由应在调用 switch_model 前就拦下"""
+        def _boom(name):
+            raise AssertionError("缺字段时不应调用 switch_model")
+        monkeypatch.setattr(routes, "switch_model", _boom)
+        resp = client.post("/set_model", json={})
+        assert resp.status_code == 400
+        assert resp.get_json()["ok"] is False
+
+    def test_set_model_get_method_not_allowed(self, client):
+        assert client.get("/set_model").status_code == 405
+
+    @pytest.mark.parametrize("body", [
+        {"model": 123},          # 非字符串（回归：(123).strip() 崩溃致 500）
+        {"model": {"a": 1}},     # 非字符串 dict
+        [1, 2],                  # 非 dict body
+    ])
+    def test_set_model_non_string_or_non_dict_returns_400(
+            self, client, monkeypatch, body):
+        """非法类型输入不得 500：路由应在调用 switch_model 前拦下返回 400"""
+        def _boom(name):
+            raise AssertionError("非法输入不应到达 switch_model")
+        monkeypatch.setattr(routes, "switch_model", _boom)
+        resp = client.post("/set_model", json=body)
+        assert resp.status_code == 400
+        assert resp.get_json()["ok"] is False

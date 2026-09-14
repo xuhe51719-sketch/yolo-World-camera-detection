@@ -4,8 +4,8 @@
 环境变量名与原实现保持完全兼容（YOLO_MODEL / YOLO_IMGSZ / YOLO_HALF /
 PHONE_ROTATE / PHONE_MIRROR / PHONE_CAMERA_URL / FLASK_HOST / FLASK_PORT /
 DETECTION_INTERVAL / LOG_LEVEL / RECORD_ENABLED / RECORD_DIR / RECORD_FPS /
-RECORD_SEGMENT_S / RECORD_RETENTION_MIN / TRAIL_ENABLED / TRAIL_MAX_POINTS /
-ALERT_COOLDOWN_S / ALERT_SOUND_S / ZONES_FILE）。
+RECORD_SEGMENT_S / RECORD_RETENTION_MIN / ALERT_COOLDOWN_S / ALERT_SOUND_S /
+ZONES_FILE）。
 
 所有相对路径以项目根（BASE_DIR）锚定，避免依赖运行时工作目录。
 本模块导入时无任何模型加载 / 摄像头连接副作用。
@@ -73,10 +73,6 @@ class AppConfig:
     record_segment_s: int         # 每段时长（秒），到点关段开新段
     record_retention_min: int     # 滚动保留时长（分钟），超出的最旧段自动删除（最多约 1 小时）
 
-    # --- 轨迹绘制 ---
-    trail_enabled: bool           # 是否在画面上绘制跟踪轨迹（TRAIL_ENABLED=0 关闭）
-    trail_max_points: int         # 每条轨迹保留的最大点数（deque maxlen）
-
     # --- 区域入侵报警 ---
     alert_cooldown_s: int         # 同一 (区域, 类别) 报警冷却（秒），避免持续滞留重复触发
     alert_sound_s: int            # 报警音播放时长（秒）
@@ -124,9 +120,6 @@ def load_config():
         record_fps=_env_int("RECORD_FPS", 15),
         record_segment_s=_env_int("RECORD_SEGMENT_S", 60),
         record_retention_min=_env_int("RECORD_RETENTION_MIN", 60),
-        # --- 轨迹绘制 ---
-        trail_enabled=os.environ.get("TRAIL_ENABLED", "1") != "0",
-        trail_max_points=_env_int("TRAIL_MAX_POINTS", 60),
         # --- 区域入侵报警 ---
         alert_cooldown_s=_env_int("ALERT_COOLDOWN_S", 30),
         alert_sound_s=_env_int("ALERT_SOUND_S", 10),

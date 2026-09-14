@@ -43,7 +43,7 @@ def _forbid_real_model(monkeypatch):
 
 # ------------------------------------------------------------
 # 共享状态隔离：用例对 state 的修改在结束后还原；
-# 同时覆盖新模块（zones / tracks / recorder）的模块级状态与
+# 同时覆盖新模块（zones / recorder）的模块级状态与
 # zones.json 持久化文件，保证用例间完全不串。
 # ------------------------------------------------------------
 def _drain_recorder_queue():
@@ -62,7 +62,6 @@ def _drain_recorder_queue():
 def _isolate_state():
     import recorder
     import state
-    import tracks
     import zones
     from config import settings
 
@@ -87,8 +86,6 @@ def _isolate_state():
         "zones_inside": dict(zones._inside),
         "zones_last_alert": dict(zones._last_alert),
         "zones_alarm_active": zones._alarm_active,
-        "tracks_points": {k: list(v) for k, v in tracks._store.points.items()},
-        "tracks_last_seen": dict(tracks._store.last_seen),
         "recorder_active": recorder.recorder_active,
         "stopped_reason": recorder.stopped_reason,
         "active_segment_name": recorder._active_segment_name,
@@ -118,14 +115,6 @@ def _isolate_state():
         zones._last_alert.clear()
         zones._last_alert.update(snapshot["zones_last_alert"])
     zones._alarm_active = snapshot["zones_alarm_active"]
-    with tracks._store.lock:
-        tracks._store.points.clear()
-        tracks._store.last_seen.clear()
-        tracks._store.last_seen.update(snapshot["tracks_last_seen"])
-        for tid, pts in snapshot["tracks_points"].items():
-            from collections import deque
-            tracks._store.points[tid] = deque(
-                pts, maxlen=max(1, settings.trail_max_points))
     recorder.recorder_active = snapshot["recorder_active"]
     recorder.stopped_reason = snapshot["stopped_reason"]
     recorder._active_segment_name = snapshot["active_segment_name"]

@@ -323,3 +323,101 @@ class TestOrientationClearsZones:
         assert data["orientation"]["rotate"] == 90   # 非法值被忽略，方向未变
         assert data["regions_cleared"] is False
         assert len(client.get("/zones").get_json()["regions"]) == 1
+
+
+# ============================================================
+# /recordings/delete：自选删除录像段（白名单 / 活动段 / 不存在 / 缓存清理）
+# ============================================================
+class TestRecordingsDelete:
+    def _mk(self, tmp_path, *names):
+        rec_dir = tmp_path / "recordings"
+        rec_dir.mkdir(exist_ok=True)
+        for n in names:
+            (rec_dir / n).write_bytes(b"x")
+        return rec_dir
+
+    def test_delete_existing_clip_removes_file(self, client, tmp_path):
+        rec_dir = self._mk(tmp_path, "seg_20260101_000000.mp4",
+                           "seg_20260101_000100.mp4")
+        resp = client.post("/recordings/delete",
+                           json={"file": "seg_20260101_000000.mp4"})
+        assert resp.status_code == 200
+        assert resp.get_json()["ok"] is True
+        assert not (rec_dir / "seg_20260101_000000.mp4").exists()
+        assert (rec_dir / "seg_20260101_000100.mp4").exists()   # 其他段不受影响
+        files = [c["file"]
+                 for c in client.get("/recordings/clips").get_json()["clips"]]
+        assert "seg_20260101_000000.mp4" not in files
+
+    @pytest.mark.parametrize("bad", [
+        "../evil.mp4",            # 路径穿越
+        "..%2F..%2Fetc%2Fpasswd",  # 编码后路径穿越
+        "not_a_clip.mp4",         # 不匹配白名单格式
+        "seg_evil.txt",           # 扩展名非法
+        "",                       # 空名
+    ])
+    def test_delete_invalid_name_returns_400(self, client, tmp_path, bad):
+        self._mk(tmp_path, "seg_20260101_000000.mp4")
+        resp = client.post("/recordings/delete", json={"file": bad})
+        assert resp.status_code == 400
+        assert resp.get_json()["ok"] is False
+        # 非法请求不得误删任何段
+        assert (tmp_path / "recordings" / "seg_20260101_000000.mp4").exists()
+
+    def test_delete_active_segment_returns_400(self, client, tmp_path, monkeypatch):
+        import recorder
+        self._mk(tmp_path, "seg_20260101_000000.mp4")
+        monkeypatch.setattr(recorder, "_active_segment_name",
+                            "seg_20260101_000000.mp4")
+        resp = client.post("/recordings/delete",
+                           json={"file": "seg_20260101_000000.mp4"})
+        assert resp.status_code == 400
+        assert resp.get_json()["ok"] is False
+        assert (tmp_path / "recordings" / "seg_20260101_000000.mp4").exists()
+
+    def test_delete_missing_clip_returns_404(self, client, tmp_path):
+        self._mk(tmp_path)   # 目录存在但无该段
+        resp = client.post("/recordings/delete",
+                           json={"file": "seg_20260101_000000.mp4"})
+        assert resp.status_code == 404
+        assert resp.get_json()["ok"] is False
+
+    def test_delete_clears_duration_cache(self, client, tmp_path):
+        import recorder
+        self._mk(tmp_path, "seg_20260101_000000.mp4")
+        recorder._duration_cache["seg_20260101_000000.mp4"] = 60.0
+        resp = client.post("/recordings/delete",
+                           json={"file": "seg_20260101_000000.mp4"})
+        assert resp.status_code == 200
+        assert "seg_20260101_000000.mp4" not in recorder._duration_cache
+
+    def test_delete_get_method_not_allowed(self, client):
+        assert client.get("/recordings/delete").status_code == 405
+
+    @pytest.mark.parametrize("body", [
+        {"file": 123},          # 非字符串（回归：(123).strip() 崩溃致 500）
+        {"file": {"a": 1}},     # 非字符串 dict
+        [1, 2],                  # 非 dict body
+    ])
+    def test_delete_non_string_or_non_dict_returns_400(self, client, tmp_path, body):
+        """非法类型输入不得 500：返回 400 且不得误删任何段"""
+        self._mk(tmp_path, "seg_20260101_000000.mp4")
+        resp = client.post("/recordings/delete", json=body)
+        assert resp.status_code == 400
+        assert resp.get_json()["ok"] is False
+        assert (tmp_path / "recordings" / "seg_20260101_000000.mp4").exists()
+
+    def test_delete_race_with_cleanup_treated_as_success(
+            self, client, tmp_path, monkeypatch):
+        """isfile 通过后被滚动清理线程抢先删除（FileNotFoundError）
+        应视为幂等成功返回 200，不得误报 500"""
+        import recorder
+        self._mk(tmp_path, "seg_20260101_000000.mp4")
+
+        def _race_remove(path):
+            raise FileNotFoundError("already removed by cleanup")
+        monkeypatch.setattr(recorder.os, "remove", _race_remove)
+        resp = client.post("/recordings/delete",
+                           json={"file": "seg_20260101_000000.mp4"})
+        assert resp.status_code == 200
+        assert resp.get_json()["ok"] is True

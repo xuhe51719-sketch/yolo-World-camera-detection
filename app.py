@@ -12,9 +12,8 @@ YOLOv8 实时目标检测系统
   metrics.py   量化指标采集
   camera.py    摄像头打开 / 重连 / 地址纠错 / 画面方向
   detector.py  模型惰性单例 / 检测循环 / 绘制
-  recorder.py  滚动录制（最多 1 小时）/ 回放路由（新增）
-  tracks.py    按跟踪 ID 的轨迹绘制（新增）
-  zones.py     区域入侵报警 / 事件 / 报警音（新增）
+  recorder.py    滚动录制（最多 1 小时）/ 回放路由（新增）
+  zones.py       区域入侵报警 / 事件 / 报警音（新增）
   routes.py    Flask 路由（对外契约不变）
   app.py       create_app() 工厂 + main() 入口
 

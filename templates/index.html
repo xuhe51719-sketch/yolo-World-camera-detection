@@ -313,6 +313,27 @@
 
         .param-row .p-value.accent { color: var(--blue); }
 
+        /* 模型切换下拉框（运行参数面板内） */
+        .model-select {
+            max-width: 220px;
+            height: 30px;
+            padding: 0 10px;
+            border-radius: 8px;
+            border: 1px solid var(--hairline);
+            background: var(--canvas);
+            color: var(--ink);
+            font-size: 12px;
+            font-family: inherit;
+            font-weight: 600;
+            cursor: pointer;
+            outline: none;
+            transition: border-color 0.15s ease, opacity 0.15s ease;
+        }
+
+        .model-select:hover { border-color: #c7c7cc; }
+        .model-select:focus { border-color: var(--blue); }
+        .model-select:disabled { opacity: 0.5; cursor: progress; }
+
         /* ================= 检测结果 ================= */
         .class-tags {
             display: flex;
@@ -635,6 +656,20 @@
 
         .clip-item.active { outline: 1.5px solid var(--blue); }
 
+        .clip-del {
+            border: none;
+            background: none;
+            color: var(--red);
+            cursor: pointer;
+            font-size: 12px;
+            font-family: inherit;
+            padding: 2px 8px;
+            border-radius: 6px;
+            flex-shrink: 0;
+        }
+
+        .clip-del:hover { background: rgba(255, 59, 48, 0.1); }
+
         .zone-swatch {
             width: 12px; height: 12px;
             border-radius: 4px;
@@ -840,7 +875,12 @@
                 <h2>运行参数</h2>
                 <div class="subtitle">模型与图像源</div>
             </div>
-            <div class="param-row"><span class="p-key">模型</span><span class="p-value" id="pModel">--</span></div>
+            <div class="param-row">
+                <span class="p-key">模型</span>
+                <select class="model-select" id="modelSelect" title="切换检测模型（画面不中断，加载权重需数秒）">
+                    <option value="">加载中…</option>
+                </select>
+            </div>
             <div class="param-row"><span class="p-key">推理设备</span><span class="p-value accent" id="pDevice">--</span></div>
             <div class="param-row"><span class="p-key">检测输入分辨率</span><span class="p-value" id="pImgsz">--</span></div>
             <div class="param-row"><span class="p-key">置信度阈值</span><span class="p-value" id="pConf">--</span></div>
@@ -1201,11 +1241,77 @@
         try {
             const res = await fetch('/model_info');
             const info = await res.json();
-            document.getElementById('pModel').textContent = info.model;
             document.getElementById('pDevice').textContent = info.device;
             document.getElementById('pImgsz').textContent = info.imgsz + ' px';
             document.getElementById('pConf').textContent = info.confidence_threshold.toFixed(2);
+            renderModelSelect(info.available_models || [], info.model);
         } catch (e) { /* 静默失败 */ }
+    }
+
+    // ============================================================
+    // 模型热切换（运行参数面板下拉框）
+    // ============================================================
+    let currentModel = '';       // 当前生效模型文件名；切换失败时用于还原下拉框
+    let modelSwitching = false;  // 切换进行中：禁用下拉框，避免并发提交
+
+    // world 模型加“开放词汇”标注，常规模型只显文件名（文件名本身已可区分）
+    function modelLabel(m) {
+        return m.is_world ? (m.name + ' · 开放词汇') : m.name;
+    }
+
+    function renderModelSelect(models, activeName) {
+        const sel = document.getElementById('modelSelect');
+        if (!sel) return;
+        if (!models.length) {
+            sel.innerHTML = '<option value="">无可用模型</option>';
+            sel.disabled = true;
+            return;
+        }
+        const active = models.find(m => m.active);
+        currentModel = (active && active.name) || activeName || models[0].name;
+        sel.innerHTML = models.map(m =>
+            `<option value="${escapeHtml(m.name)}"${m.name === currentModel ? ' selected' : ''}>${escapeHtml(modelLabel(m))}</option>`
+        ).join('');
+        sel.disabled = modelSwitching;
+        sel.value = currentModel;
+    }
+
+    function onModelChange() {
+        const sel = document.getElementById('modelSelect');
+        const name = sel.value;
+        // 未变 / 正在切换：还原选中项，不发请求
+        if (!name || name === currentModel || modelSwitching) {
+            sel.value = currentModel;
+            return;
+        }
+        const prev = currentModel;
+        modelSwitching = true;
+        sel.disabled = true;
+        showToast('正在切换模型…（首次加载权重需数秒）');
+        fetch('/set_model', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: name })
+        }).then(r => r.json().then(d => ({ ok: r.ok, d }))).then(({ ok, d }) => {
+            modelSwitching = false;
+            sel.disabled = false;
+            if (!ok) {
+                currentModel = prev;      // 切换失败：还原到原模型
+                sel.value = prev;
+                showToast((d && d.error) || '模型切换失败');
+                return;
+            }
+            currentModel = name;
+            sel.value = name;
+            showToast('已切换到 ' + name + (d.open_vocab ? '（开放词汇）' : ''));
+            fetchModelInfo();             // 刷新设备/类别数等（重渲染下拉框，保持选中）
+        }).catch(() => {
+            modelSwitching = false;
+            sel.disabled = false;
+            currentModel = prev;
+            sel.value = prev;
+            showToast('模型切换失败，请检查服务是否运行');
+        });
     }
 
     // ============================================================
@@ -1357,6 +1463,7 @@
 
     document.getElementById('btnConnect').addEventListener('click', connectPhone);
     document.getElementById('btnLocal').addEventListener('click', useLocal);
+    document.getElementById('modelSelect').addEventListener('change', onModelChange);
     window.addEventListener('resize', drawTrend);
 
     // ============================================================
@@ -1853,11 +1960,31 @@
                         <div class="det-bbox">时长 ${fmtDuration(c.duration_s)} · ${c.size_mb} MB</div>
                     </div>
                     <button class="rot-chip clip-play${active ? ' active' : ''}" data-file="${encodeURIComponent(c.file)}">${active ? '播放中' : '播放'}</button>
+                    <button class="clip-del" data-file="${encodeURIComponent(c.file)}">删除</button>
                 </div>`;
         }).join('');
         el.querySelectorAll('.clip-play').forEach(btn => {
             btn.addEventListener('click', () => playClip(decodeURIComponent(btn.dataset.file)));
         });
+        el.querySelectorAll('.clip-del').forEach(btn => {
+            btn.addEventListener('click', () => deleteClip(decodeURIComponent(btn.dataset.file)));
+        });
+    }
+
+    // 删除单个录像段：确认后 POST /recordings/delete，成功刷新列表与统计
+    function deleteClip(file) {
+        if (!confirm('确定删除该录像段？删除后不可恢复。')) return;
+        // 正在回放该段时先回到 LIVE，避免删除后回放流中断报错
+        if (playback.active && playback.clip === file) backToLive();
+        fetch('/recordings/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ file })
+        }).then(r => r.json().then(d => ({ ok: r.ok, d }))).then(({ ok, d }) => {
+            if (!ok) { showToast((d && d.error) || '删除失败'); return; }
+            showToast('已删除 ' + file);
+            fetchRecording();   // 刷新段数/总大小/列表
+        }).catch(() => showToast('删除失败，服务不可用'));
     }
 
     function applyPlaySource() {

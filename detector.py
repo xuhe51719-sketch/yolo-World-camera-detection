@@ -6,6 +6,7 @@
 """
 
 import logging
+import os
 import threading
 import time
 import traceback
@@ -15,19 +16,39 @@ import numpy as np
 
 import recorder
 import state
-import tracks
 from camera import apply_orientation, open_camera
-from config import settings
+from config import BASE_DIR, settings
 from config_classes import DETECTION_CLASSES
 from metrics import metrics, metrics_lock, reset_source_metrics
 
 logger = logging.getLogger(__name__)
 
 # ============================================================
-# 模型惰性单例
+# 模型惰性单例与运行时热切换
 # ============================================================
 _model = None
 _model_lock = threading.Lock()
+# 切换模型时置位：采集循环下一帧重取模型、重建 ByteTrack 会话、清空旧检测框
+_model_reload_requested = False
+
+
+def _is_world_model(path):
+    """按文件名判断是否开放词汇（YOLO-World）模型"""
+    return "world" in os.path.basename(path).lower()
+
+
+def _load_model(path):
+    """真正加载权重并按需注册开放词汇类别。
+    唯一触碰 ultralytics 的地方，便于测试打桩（绝不真加载）。"""
+    from ultralytics import YOLO   # 延迟到真正需要时才引入
+    m = YOLO(path)
+    if _is_world_model(path):
+        m.set_classes(DETECTION_CLASSES)
+        logger.info("开放词汇模型已加载: %s，注册 %d 个检测类别",
+                    path, len(DETECTION_CLASSES))
+    else:
+        logger.info("常规模型已加载: %s（固定 %d 类）", path, len(m.names))
+    return m
 
 
 def get_model():
@@ -37,17 +58,58 @@ def get_model():
     if _model is None:
         with _model_lock:
             if _model is None:   # double-checked locking
-                from ultralytics import YOLO   # 延迟到真正需要时才引入
-                m = YOLO(settings.model_path)
-                if settings.is_world_model:
-                    m.set_classes(DETECTION_CLASSES)
-                    logger.info("开放词汇模型已加载: %s，注册 %d 个检测类别",
-                                settings.model_path, len(DETECTION_CLASSES))
-                else:
-                    logger.info("常规模型已加载: %s（固定 %d 类）",
-                                settings.model_path, len(m.names))
-                _model = m
+                _model = _load_model(settings.model_path)
     return _model
+
+
+def list_available_models(search_dir=None):
+    """扫描项目根目录下的 *.pt 权重（不递归，天然排除 weights/ 子目录），
+    供前端下拉框选择。返回按文件名排序的 [{name, is_world, active}]。
+    search_dir 仅供测试注入临时目录，生产默认 BASE_DIR。"""
+    base = search_dir if search_dir is not None else BASE_DIR
+    try:
+        entries = os.listdir(base)
+    except OSError:
+        return []
+    current = os.path.normcase(os.path.abspath(settings.model_path))
+    models = []
+    for fn in entries:
+        if not fn.lower().endswith(".pt"):
+            continue
+        full = os.path.join(base, fn)
+        if not os.path.isfile(full):
+            continue
+        models.append({
+            "name": fn,
+            "is_world": _is_world_model(fn),
+            "active": os.path.normcase(os.path.abspath(full)) == current,
+        })
+    models.sort(key=lambda m: m["name"].lower())
+    return models
+
+
+def switch_model(name, search_dir=None):
+    """运行时热切换检测模型（方案 A：请求线程内加载 + 原子换引用 + 标志位通知）。
+
+    安全边界：name 必须命中 list_available_models 白名单（根目录下的 .pt basename），
+    路径穿越 / 子目录引用 / 非 .pt 一律拒绝。加载在锁内进行，但因 get_model() 在
+    _model 非空时不加锁直接返回，加载期间采集线程照常出帧，画面不冻结。
+    加载失败则抛出异常，_model 与 settings 保持不变（旧模型继续服务）。"""
+    global _model, _model_reload_requested
+    base = search_dir if search_dir is not None else BASE_DIR
+    available = {m["name"] for m in list_available_models(base)}
+    if name not in available:
+        raise ValueError(
+            f"模型 '{name}' 不在可用列表中（仅允许项目根目录下的 .pt 文件名）")
+    new_path = os.path.join(base, name)
+    with _model_lock:
+        new_model = _load_model(new_path)   # 失败则抛出，下面的赋值均不执行
+        _model = new_model                  # 原子换引用（旧模型待采集线程重取后由 GC 回收）
+        settings.model_path = new_path
+        settings.is_world_model = _is_world_model(new_path)
+        _model_reload_requested = True      # 通知采集循环下一帧重取模型
+    logger.info("模型已切换: %s（开放词汇=%s）", name, settings.is_world_model)
+    return {"model": name, "open_vocab": settings.is_world_model}
 
 
 # ============================================================
@@ -104,6 +166,21 @@ def request_tracker_reset():
     _tracker_reset_requested = True
 
 
+def apply_model_reload():
+    """采集循环发现 _model_reload_requested 时调用：重取新模型、请求重建
+    ByteTrack 会话（旧模型的跟踪 ID 对新模型毫无意义）、清空旧模型残留的检测框
+    与跟踪指标，避免跨模型的框/ID 错乱。返回重取到的模型。"""
+    global _model_reload_requested
+    model = get_model()
+    request_tracker_reset()
+    with state.detections_lock:
+        state.latest_detections = []   # 清掉旧模型的检测框
+    reset_source_metrics()   # 与换源同口径：跨模型无意义的累计统计一并清零（内部自带锁）
+    _model_reload_requested = False
+    logger.info("采集循环已切换到新模型: %s", settings.model_path)
+    return model
+
+
 def detection_loop():
     """持续读取图像源、运行 YOLO 检测、更新最新帧和结果。
     整个循环体有异常保护：任何错误都会打印堆栈并重置连接后重试，
@@ -140,6 +217,11 @@ def detection_loop():
                 with state.detections_lock:
                     state.latest_detections = []   # 清掉旧源残留的检测框
                 logger.info("收到切换图像源请求，正在重新连接...")
+
+            # 模型热切换：请求线程已把 _model 原子换成新模型并置位标志，
+            # 这里重取模型、重建 ByteTrack 会话、清空旧模型的检测框（画面不中断）
+            if _model_reload_requested:
+                model = apply_model_reload()
 
             if cap is None or not cap.isOpened():
                 cap = open_camera()
@@ -235,11 +317,6 @@ def detection_loop():
                 draw_dets = state.latest_detections
             recorder.enqueue(frame.copy())   # 入滚动录制队列（非阻塞；入队副本，避免录制线程与主管线就地绘制竞争）
             draw_detection_boxes(frame, draw_dets)
-            # 轨迹绘制是旁路功能：任何异常都不允许影响检测主管线（与录制旁路同设计）
-            try:
-                tracks.update_and_draw_trajectories(frame, draw_dets)   # 按跟踪 ID 画运动尾迹
-            except Exception:
-                logger.debug("轨迹绘制异常（已忽略，不影响主管线）\n%s", traceback.format_exc())
 
             # 编码为 JPEG 流并保存最新帧（同时刷新帧时间戳，/health 据此判断是否有新帧）
             ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 85])

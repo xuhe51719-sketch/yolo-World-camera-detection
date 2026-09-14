@@ -450,3 +450,32 @@ def register_recording_routes(app):
 
         return Response(_playback(),
                         mimetype='multipart/x-mixed-replace; boundary=frame')
+
+    @app.route('/recordings/delete', methods=['POST'])
+    def recordings_delete():
+        """删除指定已关闭录制段（前端每段“删除”按钮）。
+        文件名白名单防路径穿越；正在写入的活动段拒绝删除；不存在返回 404；
+        删除成功后同步丢弃该段的时长缓存。"""
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            data = {}
+        raw = data.get('file')
+        name = os.path.basename(raw.strip()) if isinstance(raw, str) else ''
+        if not _CLIP_NAME_RE.match(name):
+            return jsonify({"ok": False,
+                            "error": "非法的录像文件名（应为 seg_日期_时间.mp4/.avi）"}), 400
+        if name == _active_segment_name:
+            return jsonify({"ok": False, "error": "正在录制的段不能删除"}), 400
+        path = os.path.join(settings.record_dir, name)
+        if not os.path.isfile(path):
+            return jsonify({"ok": False, "error": "录像段不存在"}), 404
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            pass   # 已被滚动清理线程抢先删除，终态已达成，视为幂等成功
+        except OSError as e:
+            logger.error("删除录像段 %s 失败: %s", name, e)
+            return jsonify({"ok": False, "error": f"删除失败：{e}"}), 500
+        _duration_cache.pop(name, None)
+        logger.info("已删除录像段: %s", name)
+        return jsonify({"ok": True, "file": name})

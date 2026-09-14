@@ -210,9 +210,33 @@ def main():
         merged[key] = nms_merge(union, name2idx, args.iou_nms)
         t_merge.append(time.time() - t0)
 
+    # 按类取尺度：先算每个单尺度的逐类 AP，为每类选 AP 最高的尺度，该类框只取自其最佳尺度。
+    # 避免朴素合并里“劣质尺度污染好尺度”（如 1280 的碎片 person 顶掉 640 的好框）。
+    # 注意：仍需跑完所有尺度才能挑，延迟≈合并（省不了推理，只提精度）。
+    scale_aps = {s: compute_ap50(preds_by_scale[s], gt_by_img, args.iou_match) for s in scales}
+    all_cls = set()
+    for s in scales:
+        all_cls |= set(scale_aps[s].keys())
+    best_scale = {cls: max(scales, key=lambda s: scale_aps[s].get(cls, (0.0, 0))[0])
+                  for cls in all_cls}
+    class_cond = {}
+    for key, _, _ in imgs:
+        pl = []
+        for s in scales:
+            for (nm, conf, box) in preds_by_scale[s][key]:
+                if best_scale.get(nm) == s:
+                    pl.append((nm, conf, box))
+        class_cond[key] = pl
+    print("\n按类取尺度（自动为每类选 AP 最高的尺度）:")
+    for cls in ["person", "car", "motorcycle", "truck"]:
+        if cls in best_scale:
+            ap_b = scale_aps[best_scale[cls]].get(cls, (0.0, 0))[0]
+            print(f"  {cls:<12} -> 尺度 {best_scale[cls]}（该类单尺度 AP50≈{ap_b:.3f}）")
+
     # 各策略 mAP
     strategies = {f"single_{s}": preds_by_scale[s] for s in scales}
     strategies[f"merge_{'_'.join(str(s) for s in scales)}"] = merged
+    strategies[f"classbest_{'_'.join(str(s) for s in scales)}"] = class_cond
 
     rows = []
     print("\n" + "=" * 92)
@@ -228,8 +252,10 @@ def main():
         if name.startswith("single_"):
             s = int(name.split("_")[1])
             lat = float(np.mean(latency[s])) * 1000
-        else:
+        elif name.startswith("merge_"):
             lat = sum(float(np.mean(latency[s])) for s in scales) * 1000 + float(np.mean(t_merge)) * 1000
+        else:   # classbest：同样跑全部尺度，仅按类筛选（后处理开销可忽略）
+            lat = sum(float(np.mean(latency[s])) for s in scales) * 1000
         fps = 1000.0 / lat if lat > 0 else 0.0
         rows.append({"strategy": name, "mAP50_all": round(float(np.mean(all_ap)), 4) if all_ap else 0.0,
                      "mAP50_main": round(float(np.mean(main_ap)), 4) if main_ap else 0.0,
@@ -240,7 +266,7 @@ def main():
         print(f"{name:<20}{r['mAP50_all']:>9.3f}{r['mAP50_main']:>9.3f}{r['person']:>9.3f}"
               f"{r['car']:>8.3f}{r['motorcycle']:>8.3f}{r['truck']:>8.3f}{r['latency_ms']:>9.1f}{r['fps']:>7.1f}")
     print("=" * 92)
-    print("注：延迟为单帧纯推理（不含读流/绘制/跟踪）；合并策略延迟≈各尺度之和+NMS。"
+    print("注：延迟为单帧纯推理（不含读流/绘制/跟踪）；merge/classbest 都需跑全部尺度，延迟≈各尺度之和。"
           "部署每 detection_interval 帧才推理一次，可据此折算实际帧率预算。")
 
     # 写报告到 eval_reports/

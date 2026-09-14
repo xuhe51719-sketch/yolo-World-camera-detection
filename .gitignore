@@ -29,4 +29,4 @@ vehicle-50/
 *.yolov8.zip
 
 # 注：dataset/ 与 datasets/（黄金数据集与 data.yaml）需要入库，不忽略
-# 注：evaluation_report.csv 是多次精度实验的对比台账，需要入库
+# 注：eval_reports/（评估报告专用文件夹：evaluation_report.csv 汇总台账 + runs/ 每次 mAP 独立快照）需要入库

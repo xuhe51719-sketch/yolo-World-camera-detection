@@ -243,3 +243,49 @@ class TestBuildEvalDataset:
             eval_dataset.build_eval_dataset(root, ["car"], ["car"], [], "test",
                                             str(tmp_path / "work"))
 
+
+class TestWriteRunSnapshot:
+    """每次 mAP 评估的独立快照：写入 eval_reports/runs/，永不覆盖历史"""
+
+    META = [["# 模型", "yolov8m.pt"], ["# vocab", "dataset"]]
+    ROWS = [
+        {"class": "person", "gt": 135, "precision": 0.5, "recall": 0.4,
+         "mAP50": 0.45, "mAP50-95": 0.3},
+        {"class": "car", "gt": 227, "precision": 0.6, "recall": 0.5,
+         "mAP50": 0.55, "mAP50-95": 0.4},
+        {"class": "dog", "gt": 1, "precision": 0.0, "recall": 0.0,
+         "mAP50": 0.0, "mAP50-95": 0.0},
+        {"class": "ghost", "gt": 0, "precision": 0.0, "recall": 0.0,
+         "mAP50": 0.0, "mAP50-95": 0.0},
+    ]
+
+    def test_writes_meta_and_per_class_table(self, tmp_path):
+        run_dir = str(tmp_path / "runs")
+        path = eval_dataset.write_run_snapshot(
+            run_dir, "20260914_120000", "ds_dataset_all", self.META, self.ROWS, min_gt=10)
+        assert os.path.isfile(path)
+        text = open(path, encoding="utf-8-sig").read()
+        assert "# 模型" in text and "yolov8m.pt" in text
+        assert "类别,GT,Precision,Recall,mAP50,mAP50-95,类别档位" in text
+        # gt>=min_gt 标“主要”，长尾标“长尾”，gt=0 的行被跳过
+        assert "主要" in text and "长尾" in text
+        assert "ghost" not in text
+
+    def test_same_tag_twice_does_not_overwrite(self, tmp_path):
+        """同一时间戳+tag 连写两次：第二次自动加 _2 后缀，前者不被覆盖"""
+        run_dir = str(tmp_path / "runs")
+        p1 = eval_dataset.write_run_snapshot(
+            run_dir, "20260914_120000", "t", self.META, self.ROWS, 10)
+        p2 = eval_dataset.write_run_snapshot(
+            run_dir, "20260914_120000", "t", self.META, self.ROWS, 10)
+        assert p1 != p2 and os.path.isfile(p1) and os.path.isfile(p2)
+        assert p2.endswith("_2.csv")
+        assert len(os.listdir(run_dir)) == 2
+
+    def test_unsafe_tag_chars_sanitized(self, tmp_path):
+        run_dir = str(tmp_path / "runs")
+        path = eval_dataset.write_run_snapshot(
+            run_dir, "20260914_120000", "a/b:c d", self.META, self.ROWS, 10)
+        base = os.path.basename(path)
+        assert "/" not in base and ":" not in base and " " not in base
+

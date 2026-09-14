@@ -20,9 +20,11 @@ GT 类别名先经 CLASS_SYNONYMS 归一（motorbike→motorcycle 等）再映�
     ".venv\\Scripts\\python.exe" tools\\eval_dataset.py --vocab project --split all
     ".venv\\Scripts\\python.exe" tools\\eval_dataset.py --model yolov8m.pt --vocab model
 
-输出：
+输出（统一收纳到 eval_reports/ 专用文件夹，项目根目录不再散落报告）：
     - 控制台打印总体指标与各类别 P/R/mAP50 表格
-    - evaluation_report.csv 便于多次实验横向对比
+    - eval_reports/evaluation_report.csv：所有实验的汇总台账（追加式，便于横向对比）
+    - eval_reports/runs/<时间戳>__<tag>.csv：每次 mAP 的独立快照（永不覆盖历史，
+      含逐类明细，便于微调前后对比）
 """
 import os
 import sys
@@ -44,6 +46,9 @@ from config import BASE_DIR  # 项目根已在上方 sys.path.insert 中加入
 from config_classes import DETECTION_CLASSES
 
 IMG_EXTS = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
+
+# 评估报告专用文件夹：汇总台账 + 每次 mAP 的独立快照都收纳于此，避免散落项目根目录
+EVAL_REPORT_DIR = os.path.join(BASE_DIR, "eval_reports")
 
 # Roboflow 标注习惯与 COCO / 本项目词汇表的同义词映射（键与值都按小写规范名比较）。
 # 只收录真实会出现的别名，未列出的类别按原名精确匹配。
@@ -237,6 +242,37 @@ def build_eval_dataset(src_root, src_names, target_names, drop_names, split, wor
     return yaml_path, st
 
 
+def write_run_snapshot(run_dir, ts_file, tag, meta_rows, class_rows, min_gt):
+    """把单次 mAP 评估写成独立快照 CSV（每次一个文件，永不覆盖历史）。
+
+    文件名 = <时间戳>__<安全化 tag>.csv；同名已存在则追加 _2/_3 递增，确保不覆盖。
+    meta_rows: 已格式化好的元信息行（每行是 list，如 ["# 模型", "yolov8m.pt"]）。
+    class_rows: 逐类别指标 dict 列表（含 class/gt/precision/recall/mAP50/mAP50-95）。
+    返回实际写入的文件绝对路径。
+    """
+    os.makedirs(run_dir, exist_ok=True)
+    safe_tag = "".join(ch if (ch.isalnum() or ch in "._-") else "_" for ch in str(tag))
+    path = os.path.join(run_dir, f"{ts_file}__{safe_tag}.csv")
+    n = 2
+    while os.path.exists(path):
+        path = os.path.join(run_dir, f"{ts_file}__{safe_tag}_{n}.csv")
+        n += 1
+    with open(path, "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.writer(f)
+        w.writerow(["# 单次 mAP 评估快照（独立存档，不覆盖历史；便于微调前后逐类对比）"])
+        for row in meta_rows:
+            w.writerow(row)
+        w.writerow([])
+        w.writerow(["类别", "GT", "Precision", "Recall", "mAP50", "mAP50-95", "类别档位"])
+        for c in class_rows:
+            if c.get("gt", 0) <= 0:
+                continue
+            w.writerow([c["class"], c["gt"], c["precision"], c["recall"],
+                        c["mAP50"], c["mAP50-95"],
+                        "主要" if c["gt"] >= min_gt else "长尾"])
+    return os.path.abspath(path)
+
+
 def main():
     parser = argparse.ArgumentParser(description="黄金数据集 mAP 评估")
     parser.add_argument("--data",
@@ -259,7 +295,9 @@ def main():
     parser.add_argument("--min-gt", type=int, default=10,
                         help="「主要类别」门槛：GT 框数 >= 此值才计入主要类别 mAP"
                              "（长尾类只有几个框时 AP 无统计意义，会把宏平均严重拉低）")
-    parser.add_argument("--out", default=os.path.join(BASE_DIR, "evaluation_report.csv"))
+    parser.add_argument("--out",
+                        default=os.path.join(EVAL_REPORT_DIR, "evaluation_report.csv"),
+                        help="汇总台账 CSV（追加式）；默认收纳到 eval_reports/ 专用文件夹")
     args = parser.parse_args()
 
     if not os.path.exists(args.data):
@@ -379,6 +417,10 @@ def main():
         print(f"长尾类别(GT<{args.min_gt}, {len(tail_rows)} 个: "
               f"{[(c['class'], c['gt']) for c in tail_rows]}) → 样本太少，AP 不具统计意义")
 
+    # 汇总台账（追加式，所有实验横向对比）；确保 eval_reports/ 目录存在
+    out_dir = os.path.dirname(os.path.abspath(args.out))
+    os.makedirs(out_dir, exist_ok=True)
+    label_caliber = args.rename or ("drop:" + args.drop_classes if drop_names else "原始标签")
     write_header = not os.path.exists(args.out)
     with open(args.out, "a", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
@@ -395,11 +437,35 @@ def main():
                          round(float(box.mp), 4), round(float(box.mr), 4),
                          len(main_rows), round(main_map50, 4), round(main_map, 4),
                          round(main_p, 4), round(main_r, 4),
-                         args.rename or ("drop:" + args.drop_classes if drop_names else "原始标签"),
+                         label_caliber,
                          "; ".join(f"{c['class']}(n={c['gt']}):{c['mAP50']}"
                                    for c in class_rows if c["gt"] > 0)])
+
+    # 单次快照（每次 mAP 独立存档到 eval_reports/runs/，永不覆盖历史，便于微调前后对比）
+    ts_file = time.strftime("%Y%m%d_%H%M%S")
+    meta_rows = [
+        ["# 时间", time.strftime("%Y-%m-%d %H:%M:%S")],
+        ["# 模型", os.path.basename(args.model)],
+        ["# 数据集", src_root],
+        ["# vocab", args.vocab],
+        ["# split", args.split],
+        ["# imgsz", args.imgsz],
+        ["# conf", args.conf],
+        ["# tag", tag],
+        ["# 标签口径", label_caliber],
+        ["# 图像数", st["images"]],
+        ["# GT框数", st["gt_kept"]],
+        ["# 总体", f"mAP50-95={float(box.map):.4f}", f"mAP50={float(box.map50):.4f}",
+         f"P={float(box.mp):.4f}", f"R={float(box.mr):.4f}"],
+        ["# 主要类别", f"数={len(main_rows)}", f"mAP50={main_map50:.4f}",
+         f"mAP50-95={main_map:.4f}", f"P={main_p:.4f}", f"R={main_r:.4f}"],
+    ]
+    run_path = write_run_snapshot(os.path.join(EVAL_REPORT_DIR, "runs"),
+                                  ts_file, tag, meta_rows, class_rows, args.min_gt)
+
     print("-" * 66)
-    print(f"报告已追加到: {os.path.abspath(args.out)}")
+    print(f"汇总台账已追加到: {os.path.abspath(args.out)}")
+    print(f"本次快照已存档到: {run_path}")
     print("调参建议: 某类 Recall 低→该类别样本少或被漏检(加采该类图/降conf)；")
     print("          Precision 低→误报多(提高该类 conf 或从词汇表移除相近干扰词)")
 

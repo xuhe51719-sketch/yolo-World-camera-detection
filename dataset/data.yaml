@@ -1,4 +1,4 @@
-path: C:\Users\18279\Desktop\YoloV8神经网络摄像头前端目标检测\dataset
+path: dataset
 train: images
 val: images
 nc: 124

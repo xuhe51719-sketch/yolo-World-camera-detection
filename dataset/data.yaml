@@ -1,4 +1,4 @@
-path: dataset
+path: .
 train: images
 val: images
 nc: 124

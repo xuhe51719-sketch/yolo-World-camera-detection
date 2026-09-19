@@ -97,7 +97,7 @@ python app.py
 
 ```bash
 # 从手机流采集场景帧（--url 必填）
-python tools/capture_frames.py --url http://192.168.1.100:8080/video --count 60
+python tools/capture_frames.py --url http://192.xx.xx.xxxx/video --count 60
 
 # 人工标注后，用 mAP 客观评估精度
 python tools/eval_dataset.py --data dataset/data.yaml
